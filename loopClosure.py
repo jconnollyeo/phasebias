@@ -9,12 +9,6 @@ from utils import multilook
 
 wdir = "/workspace/rapidsar_test_data/south_yorkshire/jacob2/"
 
-# Get the lat and lon for each data point
-
-# data = h5.File(wdir + "data.h5")
-# shape = np.array(data["Latitude"]).shape
-# data = False
-
 # Make a list of all the images
 im_path = wdir + 'IFG/singlemaster/*/*.*'
 
@@ -26,7 +20,9 @@ im_fns.sort() # Sort the images by date
 dates = [datetime.strptime(d.split('_')[-2], '%Y%m%d') for d in im_fns]
 
 def newIFGs(primary_ix, secondary_ix):
-
+    """
+    Produce a new ifgs spanning the two indices. 
+    """
     p1 = np.exp(1j*np.asarray(h5.File(im_fns[primary_ix])['Phase']))
     p2 = np.exp(1j*np.asarray(h5.File(im_fns[secondary_ix])['Phase']))
     
@@ -36,14 +32,12 @@ def newIFGs(primary_ix, secondary_ix):
 
 def phase_closure(start, end, ml = [3, 12]):
     """
-    
+    Produce the phase closure of the defined indices. This will be a series 
+    of ifgs of the shortest possible baseline and one spanning the entire time. 
     """
     # Getting the dates from the user input indices
     d_ = dates[start:end+1]
 
-    # Performing checks on the dates - do they for a closed loop etc. 
-    # assert (d3-d1).days - ((d2-d1).days + (d3-d2).days) == 0, "Does not form closed loop."
-    
     shape = multilook(newIFGs(0, 1), ml[0], ml[1]).shape
 
     # Creating the interferograms 
@@ -57,24 +51,19 @@ def phase_closure(start, end, ml = [3, 12]):
     ifg_span = multilook(newIFGs(start, end), ml[0], ml[1])
     
     print ("Computing the closure phase")
-
     closure = ifg_span*np.prod(ifgs, axis=0, dtype=np.complex64).conjugate()
     
     # Formatting a title for the figure
-    # loop_dates = f"{datetime.strftime(d1, '%Y%m%d')}_{datetime.strftime(d2, '%Y%m%d')}__\
-# {datetime.strftime(d2, '%Y%m%d')}_{datetime.strftime(d3, '%Y%m%d')}__\
-# {datetime.strftime(d3, '%Y%m%d')}_{datetime.strftime(d1, '%Y%m%d')}\n{(d2-d1).days}_{(d3-d2).days}_{(d1-d3).days}"
     loop_days = [str((dates[di+1] - dates[di]).days) for di in np.arange(start, end, 1)]
-    loop_dates = f"{(dates[end]-dates[start]).days} - (" + ', '.join(loop_days) + f") | ML = [{ml[0]}, {ml[1]}] \n {dates[start].strftime('%Y%m%d')} to {dates[end].strftime('%Y%m%d')}"
-
-    # loop_dates = f"n={(dates[end]-dates[start]).days}, m={6}"
+    loop_dates = f"{(dates[end]-dates[start]).days} - (" + ', '.join(loop_days) + f") | ML = [{ml[0]}, {ml[1]}] \n\
+        {dates[start].strftime('%Y%m%d')} to {dates[end].strftime('%Y%m%d')}"
 
     # Returning the phase closure in radians and the figure title
     return np.angle(closure), loop_dates
 
 def plot_phase_closure(arr, loop_dates, ml): 
     """ 
-    
+    Func to plot the closure phase in radar coords and as a histogram. The mean amplitude is also plotted in radar coords. 
     """
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), gridspec_kw=dict(width_ratios=[1/3, 1/3, 1/3]))
     amp = multilook(np.load("/home/jacob/phase_bias/mean_amp.npy"), ml[0], ml[1])
@@ -93,12 +82,9 @@ def plot_phase_closure(arr, loop_dates, ml):
     ax[2].set_title("Closure phase histogram")
     
     plt.suptitle(loop_dates, y=0.08)
-    # print (p)
     cbar = plt.colorbar(p, ax=ax[2], orientation='horizontal')
     cbar.ax.set_ylabel("Closure phase (radians)")
-    # cbar.ax.set_ylim([-np.pi, np.pi])
-    # cbar.ax.set_yticks([-np.pi, 0, np.pi])
-    # cbar.ax.set_yticklabels(["$-\pi$", "0", "$\pi$"])
+
     plt.show()
 
 def main():
@@ -107,7 +93,7 @@ def main():
 
     arr, loop_dates = phase_closure(start, end, [ml1, ml2])
 
-    plot_phase_closure(arr, loop_dates, [ml1, ml2]) # [447:691, 31:810]
+    plot_phase_closure(arr, loop_dates, [ml1, ml2])
 
 if __name__ == "__main__":
     main()
