@@ -45,13 +45,13 @@ def phase_closure(start, end, ml = [3, 12]):
     
     print ("Creating interferograms")
     for i, d in enumerate(np.arange(start, end)):
-        ifgs[i] = multilook(newIFGs(d, d+1), ml[0], ml[1])
+        ifgs[i] = multilook(newIFGs(d, d+1), ml[0], ml[1]) # Complex np.complex64
 
     print ("Creating interferogram spanning whole range")
-    ifg_span = multilook(newIFGs(start, end), ml[0], ml[1])
+    ifg_span = multilook(newIFGs(start, end), ml[0], ml[1]) # Complex np.complex64
     
     print ("Computing the closure phase")
-    closure = ifg_span*np.prod(ifgs, axis=0, dtype=np.complex64).conjugate()
+    closure = ifg_span*np.prod(ifgs, axis=0, dtype=np.complex64).conjugate() # Phi_start, end - (Phi_start,start+1 + Phi_start+1,start+2, etc.)
     
     # Formatting a title for the figure
     loop_days = [str((dates[di+1] - dates[di]).days) for di in np.arange(start, end, 1)]
@@ -85,12 +85,16 @@ def plot_phase_closure(arr, loop_dates, ml):
     cbar = plt.colorbar(p, ax=ax[2], orientation='horizontal')
     cbar.ax.set_ylabel("Closure phase (radians)")
 
-    plt.show()
+    save_fn = f"{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.png"
+    
+    plt.savefig(save_fn)
+    np.save(save_fn[:-4] + ".npy", arr)
+    # plt.show()
 
 def main():
 
-    start, end, ml1, ml2 = np.array(sys.argv[1:], dtype=int)
-
+    start, delta, ml1, ml2 = np.array(sys.argv[1:], dtype=int)
+    end = int(start) + int(delta)
     arr, loop_dates = phase_closure(start, end, [ml1, ml2])
 
     plot_phase_closure(arr, loop_dates, [ml1, ml2])
