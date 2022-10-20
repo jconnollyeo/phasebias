@@ -33,6 +33,7 @@ def importData(fns):
 def splitGrids(data, size=100):
     """
     Splits an array by the size variable and computes the mean of each segment. 
+    Output array is of the same shape and size of the input array. 
     """
     
     i = list(np.arange(data.shape[0])[::size])
@@ -92,14 +93,22 @@ def main():
 
     fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 5))
     ix = 10
-    ax[0].matshow(multilook(np.load("mean_amp.npy"), 3, 12), cmap="binary_r", vmax=3, vmin=0)
+    p0 = ax[0].matshow(multilook(np.load("mean_amp.npy"), 3, 12), cmap="binary_r", vmax=3, vmin=0)
     p1 = ax[1].matshow(data[ix], cmap='RdYlBu', vmin=-np.pi, vmax=np.pi)
     p2 = ax[2].matshow(np.angle(splitGrids(data_complex[ix], size=size)), cmap='RdYlBu', vmin=-0.5, vmax=0.5)
     n = ax[3].hist(data[ix].flatten(), bins=np.linspace(-np.pi, np.pi, 50))[0]
     ax[3].text(-0.5, np.max(n)*0.7, f"$\mu$ = {np.mean(data[ix]):.2f}", horizontalalignment='right')
-
+    
+    plt.colorbar(p0, ax=ax[0], orientation='horizontal')
     plt.colorbar(p1, ax=ax[1], orientation='horizontal')
     plt.colorbar(p2, ax=ax[2], orientation='horizontal')
+    
+    ax[0].set_title("Mean amplitude")
+    ax[1].set_title("Phase closure - 12, 6, 6")
+    ax[2].set_title("Mean phase closure segmented")
+    ax[3].set_title("Histogram of phase closure")
+
+    
 
     plt.show()
 
