@@ -63,17 +63,29 @@ def splitTS(data, size=100):
 
     return out[:, ::size, ::size]
 
-def main():
-    size=50
+def plotSegments(data, data_complex, ix, dates_primary, size=100):
+    fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 5))
+    p0 = ax[0].matshow(multilook(np.load("mean_amp.npy"), 3, 12), cmap="binary_r", vmin=0, vmax=3)
+    p1 = ax[1].matshow(data[ix], cmap='RdYlBu', vmin=-np.pi, vmax=np.pi)
+    p2 = ax[2].matshow(np.angle(splitGrids(data_complex[ix], size=size)), cmap='RdYlBu', vmin=-0.5, vmax=0.5)
+    n = ax[3].hist(data[ix].flatten(), bins=np.linspace(-np.pi, np.pi, 50))[0]
+    ax[3].text(-0.5, np.max(n)*0.7, f"$\mu$ = {np.mean(data[ix]):.2f}", horizontalalignment='right')
     
-    dates_primary, dates_secondary = extractDates(data_fns)
+    cbar0 = plt.colorbar(p0, ax=ax[0], orientation='horizontal')
+    cbar1 = plt.colorbar(p1, ax=ax[1], orientation='horizontal')
+    cbar2 = plt.colorbar(p2, ax=ax[2], orientation='horizontal')
+    
+    cbar0.ax.set_xlabel("Mean amplitude")
+    cbar1.ax.set_xlabel("Phase closure - 12, 6, 6")
+    cbar2.ax.set_xlabel("Mean phase closure segmented")
+    ax[3].set_title("Histogram of phase closure")
+    
+    plt.suptitle(datetime.strftime(dates_primary[ix], "%d/%m/%Y")) 
+    fig.savefig(f"12_6_6/figures/segments/50/{datetime.strftime(dates_primary[ix], '%Y%m%d')}_segmented.png")
+        
+    return None
 
-    data = importData(data_fns)
-    data_complex = np.exp(1j*data)
-
-    print (data.shape)
-
-    # Plot the timeseries of mean closure phase for the whole image
+def plotTimeseries(data, data_complex, dates_primary, size=100):
     fig, ax_TS = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
     ax_TS[0].plot(dates_primary, np.array([np.mean(d) for d in data]))
     ax_TS[0].set_title("Mean closure phase for entire image")
@@ -90,27 +102,26 @@ def main():
     plt.axvline(x=datetime.strptime("20210501", "%Y%m%d"), color="red")
     plt.axvline(x=datetime.strptime("20210801", "%Y%m%d"), color="red")
     plt.axvline(x=datetime.strptime("20211101", "%Y%m%d"), color="red")
-
-    fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 5))
-    ix = 10
-    p0 = ax[0].matshow(multilook(np.load("mean_amp.npy"), 3, 12), cmap="binary_r", vmax=3, vmin=0)
-    p1 = ax[1].matshow(data[ix], cmap='RdYlBu', vmin=-np.pi, vmax=np.pi)
-    p2 = ax[2].matshow(np.angle(splitGrids(data_complex[ix], size=size)), cmap='RdYlBu', vmin=-0.5, vmax=0.5)
-    n = ax[3].hist(data[ix].flatten(), bins=np.linspace(-np.pi, np.pi, 50))[0]
-    ax[3].text(-0.5, np.max(n)*0.7, f"$\mu$ = {np.mean(data[ix]):.2f}", horizontalalignment='right')
     
-    plt.colorbar(p0, ax=ax[0], orientation='horizontal')
-    plt.colorbar(p1, ax=ax[1], orientation='horizontal')
-    plt.colorbar(p2, ax=ax[2], orientation='horizontal')
+    fig.savefig("timeseries_mean_loop_closure.png")
     
-    ax[0].set_title("Mean amplitude")
-    ax[1].set_title("Phase closure - 12, 6, 6")
-    ax[2].set_title("Mean phase closure segmented")
-    ax[3].set_title("Histogram of phase closure")
+    return fig
 
+def main():
+    size=50
     
+    dates_primary, dates_secondary = extractDates(data_fns)
 
-    plt.show()
+    data = importData(data_fns)
+    data_complex = np.exp(1j*data)
+
+    # Plot the timeseries of mean closure phase for the whole image
+    plotTimeseries(data, data_complex, dates_primary, size=size)
+    # ix = 10
+    for ix in np.arange(data.shape[0]):
+        plotSegments(data, data_complex, ix, dates_primary, size=size)
+        plt.close()
+    # plt.show()
 
 if __name__ == "__main__":
     main()
