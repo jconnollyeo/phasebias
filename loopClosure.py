@@ -8,8 +8,8 @@ from datetime import datetime
 import sys
 from utils import multilook
 import argparse
-from pathlib import Path
-
+# from pathlib import Path
+import matplotlib.transforms as mtrans
 
 # wdir = "/workspace/rapidsar_test_data/south_yorkshire/jacob2/"
 
@@ -25,11 +25,7 @@ def newIFGs(primary_ix, secondary_ix, im_fns):
 
     return ifg
 
-def phase_closure(start, end, dates, im_fns, ml = [3, 12]):
-    """
-    Produce the phase closure of the defined indices. This will be a series 
-    of ifgs of the shortest possible baseline and one spanning the entire time. 
-    """
+def create_loop(start, end, dates, im_fns, ml=[3, 12]):
     # Getting the dates from the user input indices
     d_ = dates[start:end+1]
 
@@ -44,17 +40,94 @@ def phase_closure(start, end, dates, im_fns, ml = [3, 12]):
 
     print ("Creating interferogram spanning whole range")
     ifg_span = multilook(newIFGs(start, end, im_fns), ml[0], ml[1]) # Complex np.complex64
-    
+    return ifgs, ifg_span
+
+def phase_closure(ifgs, ifg_span):
+    """
+    Produce the phase closure of the defined indices. This will be a series 
+    of ifgs of the shortest possible baseline and one spanning the entire time. 
+    """
+
     print ("Computing the closure phase")
     closure = ifg_span*np.prod(ifgs, axis=0, dtype=np.complex64).conjugate() # Phi_start, end - (Phi_start,start+1 + Phi_start+1,start+2, etc.)
-    
-    # Formatting a title for the figure
-    loop_days = [str((dates[di+1] - dates[di]).days) for di in np.arange(start, end, 1)]
-    loop_dates = f"{(dates[end]-dates[start]).days} - (" + ', '.join(loop_days) + f") | ML = [{ml[0]}, {ml[1]}] \n\
-        {dates[start].strftime('%Y%m%d')} to {dates[end].strftime('%Y%m%d')}"
 
     # Returning the phase closure in radians and the figure title
-    return np.angle(closure), loop_dates
+    return np.angle(closure)
+
+def plot_fig2(ifgs, ifg_span, closure):
+
+    num_loop = ifgs.shape[0]
+
+    fig, ax = plt.subplots(nrows=1, ncols=int(1+num_loop+1), figsize=(4*(num_loop + 2), 6))
+
+    ax[0].matshow(np.angle(ifg_span), cmap="RdYlBu")
+    for i, a in enumerate(ax[1:-1]):
+        a.matshow(np.angle(ifgs[i]), cmap="RdYlBu")
+    ax[-1].matshow(closure, cmap="RdYlBu")
+
+    for a in ax:
+        a.axis('off')
+    
+    xs, ys = find_bbox(fig, ax)
+    
+    for l in left_bracket(xs, ys, 1):
+        fig.add_artist(l)
+
+    for l in right_bracket(xs, ys, 3):
+        fig.add_artist(l)
+
+    for index in np.arange(2, len(xs)-2):
+        for l in plus(xs, index, fig):
+            fig.add_artist(l)
+
+    plt.show()
+
+def left_bracket(x, y, index):
+
+    linever = plt.Line2D([x[index], x[index]], [y[0]-0.01, y[1]+0.01], color='black')
+    linetop = plt.Line2D([x[index], x[index]+0.01], [y[1]+0.01, y[1]+0.01], color='black')
+    linebot = plt.Line2D([x[index], x[index]+0.01], [y[0]-0.01, y[0]-0.01], color='black')
+
+    minus = plt.Line2D([x[index] - 0.005, x[index] - 0.009], [0.5, 0.5], color='black')
+    
+    return linever, linetop, linebot, minus
+
+def right_bracket(x, y, index):
+
+    linever = plt.Line2D([x[index], x[index]], [y[0]-0.01, y[1]+0.01], color='black')
+    linetop = plt.Line2D([x[index], x[index]-0.01], [y[1]+0.01, y[1]+0.01], color='black')
+    linebot = plt.Line2D([x[index], x[index]-0.01], [y[0]-0.01, y[0]-0.01], color='black')
+    
+    eqtop = plt.Line2D([x[index] + 0.005, x[index] + 0.009], [0.505, 0.505], color='black')
+    eqbot = plt.Line2D([x[index] + 0.005, x[index] + 0.009], [0.495, 0.495], color='black')
+
+    return linever, linetop, linebot, eqtop, eqbot
+
+def plus(x, index, fig):
+    
+    aspect = fig.get_figheight() / fig.get_figwidth()
+
+    hor = plt.Line2D([x[index]-0.002, x[index]+0.002], [0.5, 0.5], color='black')
+    ver = plt.Line2D([x[index], x[index]], [0.5-(0.002/aspect), 0.5+(0.002/aspect)], color='black')
+
+    return hor, ver
+
+def find_bbox(fig, axes):
+    # Get the bounding boxes of the axes including text decorations
+    
+    r = fig.canvas.get_renderer()
+    get_bbox = lambda ax: ax.get_tightbbox(r).transformed(fig.transFigure.inverted())
+    xs_max = np.array([np.array(get_bbox(a), mtrans.Bbox)[1, 0] for a in axes])
+    xs_min = np.array([np.array(get_bbox(a), mtrans.Bbox)[0, 0] for a in axes])
+    xs_max = np.insert(xs_max, 0, 0)
+    xs_min = np.append(xs_min, 1)
+    xs = (xs_min + xs_max)/2
+
+    ys = np.array([np.array(get_bbox(axes[0]), mtrans.Bbox)[0, 1], np.array(get_bbox(axes[0]), mtrans.Bbox)[1, 1]])
+
+    return xs, ys
+
+
 
 def plot_phase_closure(arr, loop_dates, dates, ml, save, plot): 
     """ 
@@ -149,9 +222,16 @@ def main():
 
     # start, delta, ml1, ml2 = np.array(sys.argv[1:], dtype=int)
     end = int(start) + int(delta)
-    arr, loop_dates = phase_closure(start, end, dates, im_fns, ml)
+    ifgs, ifg_span = create_loop(start, end, dates, im_fns, ml)
+    # Formatting a title for the figure
+    loop_days = [str((dates[di+1] - dates[di]).days) for di in np.arange(start, end, 1)]
+    loop_dates = f"{(dates[end]-dates[start]).days} - (" + ', '.join(loop_days) + f") | ML = [{ml[0]}, {ml[1]}] \n\
+        {dates[start].strftime('%Y%m%d')} to {dates[end].strftime('%Y%m%d')}"
+    arr = phase_closure(ifgs, ifg_span)
 
     plot_phase_closure(arr, loop_dates, dates, ml, save_bool, plot)
+
+    plot_fig2(ifgs, ifg_span, arr)
 
 if __name__ == "__main__":
     sys.exit(main())
