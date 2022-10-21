@@ -1,3 +1,4 @@
+from ast import arg
 import numpy as np
 import h5py as h5
 import matplotlib.pyplot as plt
@@ -6,22 +7,16 @@ import glob
 from datetime import datetime
 import sys
 from utils import multilook
+import argparse
+from pathlib import Path
 
-wdir = "/workspace/rapidsar_test_data/south_yorkshire/jacob2/"
 
-# Make a list of all the images
-im_path = wdir + 'IFG/singlemaster/*/*.*'
+# wdir = "/workspace/rapidsar_test_data/south_yorkshire/jacob2/"
 
-im_fns = [file for file in glob.glob(im_path, recursive=True)]
-
-im_fns.sort() # Sort the images by date
-
-# Use the image fns to get the date of each secondary SLC
-dates = [datetime.strptime(d.split('_')[-2], '%Y%m%d') for d in im_fns]
-
-def newIFGs(primary_ix, secondary_ix):
+def newIFGs(primary_ix, secondary_ix, im_fns):
     """
-    Produce a new ifgs spanning the two indices. 
+    Produce a new ifgs spanning the two indices from h5 files using index
+    in wdir. 
     """
     p1 = np.exp(1j*np.asarray(h5.File(im_fns[primary_ix])['Phase']))
     p2 = np.exp(1j*np.asarray(h5.File(im_fns[secondary_ix])['Phase']))
@@ -30,7 +25,7 @@ def newIFGs(primary_ix, secondary_ix):
 
     return ifg
 
-def phase_closure(start, end, ml = [3, 12]):
+def phase_closure(start, end, dates, im_fns, ml = [3, 12]):
     """
     Produce the phase closure of the defined indices. This will be a series 
     of ifgs of the shortest possible baseline and one spanning the entire time. 
@@ -38,17 +33,17 @@ def phase_closure(start, end, ml = [3, 12]):
     # Getting the dates from the user input indices
     d_ = dates[start:end+1]
 
-    shape = multilook(newIFGs(0, 1), ml[0], ml[1]).shape
+    shape = multilook(newIFGs(0, 1, im_fns), ml[0], ml[1]).shape
 
     # Creating the interferograms 
     ifgs = np.empty((len(d_)-1, *shape), dtype=np.complex64)
     
     print ("Creating interferograms")
     for i, d in enumerate(np.arange(start, end)):
-        ifgs[i] = multilook(newIFGs(d, d+1), ml[0], ml[1]) # Complex np.complex64
+        ifgs[i] = multilook(newIFGs(d, d+1, im_fns), ml[0], ml[1]) # Complex np.complex64
 
     print ("Creating interferogram spanning whole range")
-    ifg_span = multilook(newIFGs(start, end), ml[0], ml[1]) # Complex np.complex64
+    ifg_span = multilook(newIFGs(start, end, im_fns), ml[0], ml[1]) # Complex np.complex64
     
     print ("Computing the closure phase")
     closure = ifg_span*np.prod(ifgs, axis=0, dtype=np.complex64).conjugate() # Phi_start, end - (Phi_start,start+1 + Phi_start+1,start+2, etc.)
@@ -61,7 +56,7 @@ def phase_closure(start, end, ml = [3, 12]):
     # Returning the phase closure in radians and the figure title
     return np.angle(closure), loop_dates
 
-def plot_phase_closure(arr, loop_dates, ml): 
+def plot_phase_closure(arr, loop_dates, dates, ml, save, plot): 
     """ 
     Func to plot the closure phase in radar coords and as a histogram. The mean amplitude is also plotted in radar coords. 
     """
@@ -85,19 +80,78 @@ def plot_phase_closure(arr, loop_dates, ml):
     cbar = plt.colorbar(p, ax=ax[2], orientation='horizontal')
     cbar.ax.set_ylabel("Closure phase (radians)")
 
-    save_fn = f"{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.png"
-    
-    plt.savefig(save_fn)
-    np.save(save_fn[:-4] + ".npy", arr)
-    # plt.show()
+    save_fn = f"12_6_6/ML12_48/{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.png"
+    if save:
+        plt.savefig(save_fn)
+        np.save(save_fn[:-4] + ".npy", arr)
+    else:
+        pass
+    if plot:
+        plt.show()
+    else:
+        pass
+
+def parse_args():
+    """
+    Parses command line arguments and defines help output
+    """
+    parser = argparse.ArgumentParser(description='Compute and plot the closure phase.')
+    parser.add_argument("-w",
+                        dest="wdir", 
+                        type=str,
+                        help='Directory containing the single master interferogram phase hdf5 files',
+                        default="/workspace/rapidsar_test_data/south_yorkshire/jacob2/")
+    parser.add_argument("-i",
+                        type=int,
+                        dest='start_index',
+                        default=0,
+                        help='Start index of the loop')
+    parser.add_argument("-d",
+                        type=int,
+                        dest='loop_delta',
+                        default=2,
+                        help='Delta for the jumpy (ie. 2 for a triplet.')
+    parser.add_argument("-m",
+                        type=str,
+                        dest='multilook',
+                        help="Multilook factor",
+                        default='3,12')
+    parser.add_argument("-s",
+                        type=bool,
+                        dest="save",
+                        help="Boolean to save (True) or not save (False).",
+                        default=1)
+    parser.add_argument("-p",
+                        type=bool,
+                        dest="plot",
+                        help="Boolean to show plot (True) or not show plot (False).",
+                        default=1)
+    args = parser.parse_args()
+    return vars(args)
 
 def main():
+    args_dict = parse_args()
+    wdir = str(args_dict["wdir"])
+    start = int(args_dict["start_index"])
+    delta = int(args_dict["loop_delta"])
+    ml = np.array(args_dict["multilook"].split(','), dtype=int)
+    save_bool = args_dict["save"]
+    plot = args_dict["plot"]
+    # Make a list of all the images
+    im_path = wdir + 'IFG/singlemaster/*/*.*'
 
-    start, delta, ml1, ml2 = np.array(sys.argv[1:], dtype=int)
+    im_fns = [file for file in glob.glob(str(im_path), recursive=True)]
+
+    im_fns.sort() # Sort the images by date
+
+    # Use the image fns to get the date of each secondary SLC
+    dates = [datetime.strptime(d.split('_')[-2], '%Y%m%d') for d in im_fns]
+
+    # start, delta, ml1, ml2 = np.array(sys.argv[1:], dtype=int)
     end = int(start) + int(delta)
-    arr, loop_dates = phase_closure(start, end, [ml1, ml2])
+    arr, loop_dates = phase_closure(start, end, dates, im_fns, ml)
 
-    plot_phase_closure(arr, loop_dates, [ml1, ml2])
+    plot_phase_closure(arr, loop_dates, dates, ml, save_bool, plot)
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
