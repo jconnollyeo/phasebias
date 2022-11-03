@@ -92,25 +92,47 @@ def main():
     save_bool = args_dict["save"]
     plot = args_dict["plot"]
 
-    # diff = doLoops(fns, start, length, m, n, ml)
     if m:
-        print ("if")
         diff = doLoops(fns, start, length, m, n, ml)
         plt.matshow(diff)
         plt.colorbar()
     else:
-        fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 10), sharex=True, sharey=True)
-        for a, m in zip(ax.flatten(), range(6, 37, 6)):
+        shape = multilook(np.array(h5.File(fns[0])['Phase']), ml[0], ml[1]).shape
+        # shape = doLoops(fns, start, length, 6, n, ml).shape
+        out = np.empty((6, *shape))
+        
+        # fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 10), sharex=True, sharey=True)
+        fig = plt.figure(figsize=(12, 15))
+        ax = np.array([fig.add_subplot(331),
+        fig.add_subplot(332),
+        fig.add_subplot(333),
+        fig.add_subplot(334),
+        fig.add_subplot(335),
+        fig.add_subplot(336),
+        fig.add_subplot(313)])
+
+        for a, m in zip(ax[:6], range(6, 37, 6)):
+        # for a, m in zip([ax[0]], [36]):
             print (f"{n = }, {m = }")
             lc = doLoops(fns, start, length, m, n, ml)
+            out[int((m/6)-1)] = lc
             if grid:
                 lc = np.angle(splitGrids(np.exp(1j*lc), size=40))
             else:
                 pass
-            p = a.matshow(lc)
-
-        plt.colorbar(p, ax=ax, shrink=0.6)
-
+            
+            p = a.matshow(lc, vmax=np.pi, vmin=-np.pi)
+            a.set_title(f"{m = }")
+        np.save("loop_closure.npy", out)
+        plt.colorbar(p, ax=ax[:6], shrink=0.8)
+        lc_loop, labels = landcover(out, "/workspace/rapidsar_test_data/south_yorkshire/datacrop_20220204.h5", ml)
+        # print (lc_loop.shape)
+        # print (len(labels))
+        for i, l in enumerate(lc_loop.T):
+            ax[-1].plot(np.arange(6, 37, 6), l, label=labels[i])
+        # ax[-1].plot(np.arange(6, 37, 6), lc_loop, label=labels)
+        ax[-1].set_xticks(np.arange(6, 37, 6), np.arange(6, 37, 6).astype(str))
+        ax[-1].legend()
     if save_bool:
         plt.savefig("test.jpg")
     else:
@@ -140,9 +162,9 @@ def doLoops(fns, start, length, m, n, ml):
     # print (dates[end])
     # Check that chains of n and m day ifgs can be created
     n_chain_check, n_ixs = check_chain(dates[start:end+1], length=n)
-
+    print ("Checked n")
     m_chain_check, m_ixs = check_chain(dates[start:end+1], length=m)
-
+    print ("Checked m")
     # Calculate the days
 
     # Create daisy chain of n-day ifgs (60 days)
@@ -177,6 +199,54 @@ def doLoops(fns, start, length, m, n, ml):
     # Return the difference
     return diff
 
+def multilook_median(im, fa=3, fr=12):
+    """ Averages image over multiple pixels where NaN are present and want to be maintained
+    Adapted from RapidSAR's multilook func.
+    Input:
+      im      2D image to be averaged
+      fa      number of pixels to average over in azimuth (row) direction
+      fr      number of pixels to average over in range (column) direction
+    Output:
+      imout   2D averaged image
+    """
+    nr = int(np.floor(len(im[0,:])/float(fr))*fr)
+    na = int(np.floor(len(im[:,0])/float(fa))*fa)
+    im = im[:na,:nr]
+    aa = np.ones((fa,int(na/fa),nr),dtype=im.dtype)*np.nan
+    for k in range(fa):
+        aa[k,:,:] = im[k::fa,:]
+    aa = np.nanmean(aa,axis=0)
+    imout=np.ones((fr,int(na/fa),int(nr/fr)),dtype=im.dtype)*np.nan
+    for k in range(fr):
+        imout[k,:,:] = aa[:,k::fr]
+    return np.median(imout, axis=0)
+
+def convert_landcover(im):
+    out = im.copy()
+
+    out[np.logical_and(im >= 111, im <= 126)] = 111
+    out[np.logical_or(im == 90, im == 80)] = 200
+    out[np.logical_or(im == 70, im == 200)] = 200
+    
+    return out
+
+def landcover(arr, fp, ml):
+    """
+    Args:
+        arr (3d array): 3d array of the loop closure. Along the zeroth axis, each 2d array is of 
+                        a different m-day interferogram loop. 
+    """
+    types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
+    lc = h5.File(fp)["Landcover"]
+    lc_ml = multilook_median(lc, ml[0], ml[1])
+    lc_ml = convert_landcover(lc_ml)
+
+    lc_loop = np.empty((arr.shape[0], 3)) # np.unique(lc_ml).shape[0]))
+    for i, im in enumerate(arr):
+        for l, lc_type in enumerate(np.array([111, 50, 40])): # np.unique(lc_ml)
+            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[lc_ml == lc_type]))
+    
+    return lc_loop, [types[111], types[50], types[40]]
 
 if __name__ == "__main__":
     sys.exit(main())
