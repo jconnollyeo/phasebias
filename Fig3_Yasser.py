@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from loopClosure import getFiles, create_loop
+from loopClosure_post import splitGrids
 import sys
 from datetime import datetime, timedelta
 import argparse
@@ -30,13 +31,13 @@ def parse_args():
     parser.add_argument("-m",
                         type=int,
                         dest='m',
-                        default=60,
-                        help='length of m-day ifgs (the longer ones)')
+                        default=6,
+                        help='length of m-day ifgs (the shorter ones)')
     parser.add_argument("-n",
                         type=int,
                         dest='n',
-                        default=6,
-                        help='length of n-day ifgs (the shorter ones)')
+                        default=60,
+                        help='length of n-day ifgs (the longer ones)')
     parser.add_argument("-s",
                         type=bool,
                         dest="save",
@@ -52,20 +53,20 @@ def parse_args():
                         dest='multilook',
                         help="Multilook factor",
                         default='3,12')
+    parser.add_argument("-g",
+                        type=bool,
+                        dest='grid',
+                        help="Segment into grids",
+                        default=False)
     args = parser.parse_args()
     return vars(args)
 
 def check_chain(dates, length):
-    # print ("Start ", dates[0])
-    # print ("End ", dates[-1])
-    # print ((dates[-1]-dates[0]).days)
     d = dates[0]
     ixs = [0]
 
     while not (d == dates[-1]):
         if d+timedelta(days=length) in dates:
-            # print (np.where((np.array(d+timedelta(days=length)) == dates))[0][0])
-            # print (np.where(((d+timedelta(days=length)) == dates)))
             ixs.append(int(np.where((np.array(d+timedelta(days=length)) == dates))[0][0]))
             d = d+timedelta(days=length)
         else:
@@ -84,17 +85,31 @@ def main():
     m = int(args_dict["m"])
     n = int(args_dict["n"])
     ml = np.array(args_dict["multilook"].split(','), dtype=int)
-    
+    grid = args_dict["grid"]
+
     fns = getFiles(wdir)
 
     save_bool = args_dict["save"]
     plot = args_dict["plot"]
 
-    diff = doLoops(fns, start, length, m, n, ml)
-    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 8))
-    p = ax[0].matshow(diff)
-    ax[1].hist(diff.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
-    plt.colorbar(p, ax=ax)
+    # diff = doLoops(fns, start, length, m, n, ml)
+    if m:
+        print ("if")
+        diff = doLoops(fns, start, length, m, n, ml)
+        plt.matshow(diff)
+        plt.colorbar()
+    else:
+        fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 10), sharex=True, sharey=True)
+        for a, m in zip(ax.flatten(), range(6, 37, 6)):
+            print (f"{n = }, {m = }")
+            lc = doLoops(fns, start, length, m, n, ml)
+            if grid:
+                lc = np.angle(splitGrids(np.exp(1j*lc), size=40))
+            else:
+                pass
+            p = a.matshow(lc)
+
+        plt.colorbar(p, ax=ax, shrink=0.6)
 
     if save_bool:
         plt.savefig("test.jpg")
@@ -134,7 +149,8 @@ def doLoops(fns, start, length, m, n, ml):
     n_days = np.arange(0, length+1, n) # [0, 60, 120, 180, ..., 360]  
     shape = multilook(np.asarray(h5.File(fns[0])['Phase']), ml[0], ml[1]).shape # Fetch the shape of the data
     n_ifgs_summed = np.zeros(shape) 
-    print (dates[n_ixs[0]], dates[n_ixs[-1]])
+    # print (n_ixs[0], n_ixs[-1])
+    # print (dates[n_ixs[0]], dates[n_ixs[-1]])
     for p_fn, s_fn in zip(n_ixs[:-1], n_ixs[1:]): 
         print (f"n, {p_fn = }, {s_fn = }", end='\r')
         p = np.asarray(h5.File(fns[p_fn])['Phase']) 
@@ -145,7 +161,8 @@ def doLoops(fns, start, length, m, n, ml):
     # Create a daisy chain of m-day ifgs (6, 12, 18, etc. days)
     m_days = np.arange(0, length+1, m)
     m_ifgs_summed = np.zeros(shape)
-    print (dates[m_ixs[0]], dates[m_ixs[-1]])
+    # print (m_ixs[0], m_ixs[-1])
+    # print (dates[m_ixs[0]], dates[m_ixs[-1]])
     
     for p_fn, s_fn in zip(m_ixs[:-1], m_ixs[1:]):
         print (f"m, {p_fn = }, {s_fn = }", end='\r')
