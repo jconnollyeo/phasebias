@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import argparse
 import h5py as h5
 from utils import multilook
+from statistics import mode
 
 def parse_args():
     """
@@ -70,10 +71,17 @@ def check_chain(dates, length):
             ixs.append(int(np.where((np.array(d+timedelta(days=length)) == dates))[0][0]))
             d = d+timedelta(days=length)
         else:
-            print (d)
-            return False, []
+            print (d, length)
+            raise Exception(f"Not a full closed loop: {length = }, {d = }, {d+timedelta(days=length) = }\n\n {dates}")
+            # return False, []
     print (ixs)
     return True, ixs
+
+# def check_all_dates(dates, length):
+
+    
+
+#     return ixs
 
 def main():
     plt.rcParams['image.cmap'] = 'RdYlBu'
@@ -120,6 +128,7 @@ def main():
                 lc = np.angle(splitGrids(np.exp(1j*lc), size=40))
             else:
                 pass
+            a.axis('off')
             
             p = a.matshow(lc, vmax=np.pi, vmin=-np.pi)
             a.set_title(f"{m = }")
@@ -153,6 +162,7 @@ def doLoops(fns, start, length, m, n, ml):
 
     # Isolate the full time series to be used for the loop
     dates = [datetime.strptime(d.split('_')[-2], '%Y%m%d') for d in fns]
+    print (len(dates))
     end = np.where(np.array([(d - dates[start]).days for d in dates]) == length)[0]
     if len(end) == 0:
         sys.exit("Data does not allow for loop of specified size")
@@ -199,7 +209,7 @@ def doLoops(fns, start, length, m, n, ml):
     # Return the difference
     return diff
 
-def multilook_median(im, fa=3, fr=12):
+def multilook_mode(im, fa=3, fr=12):
     """ Averages image over multiple pixels where NaN are present and want to be maintained
     Adapted from RapidSAR's multilook func.
     Input:
@@ -213,13 +223,31 @@ def multilook_median(im, fa=3, fr=12):
     na = int(np.floor(len(im[:,0])/float(fa))*fa)
     im = im[:na,:nr]
     aa = np.ones((fa,int(na/fa),nr),dtype=im.dtype)*np.nan
+    # print (aa)
     for k in range(fa):
         aa[k,:,:] = im[k::fa,:]
-    aa = np.nanmean(aa,axis=0)
+    aa_ = np.empty(aa.shape[1:], dtype=aa.dtype)
+    for i in range(aa.shape[1]):
+        for j in range(aa.shape[2]):
+            aa_[i, j] = mode(aa[:, i, j])
+
+    # aa = np.nanmean(aa,axis=0)
+    # print (aa.shape)
     imout=np.ones((fr,int(na/fa),int(nr/fr)),dtype=im.dtype)*np.nan
     for k in range(fr):
-        imout[k,:,:] = aa[:,k::fr]
-    return np.median(imout, axis=0)
+        imout[k,:,:] = aa_[:,k::fr]
+    # print (imout.shape)
+    out = np.empty(imout.shape[1:], dtype=imout.dtype)
+    for i in range(imout.shape[1]):
+        for j in range(imout.shape[2]):
+            out[i, j] = mode(imout[:, i, j])
+
+    return out
+
+    # print (imout.shape)
+    
+
+    # return mode(imout, axis=0)
 
 def convert_landcover(im):
     out = im.copy()
@@ -238,7 +266,7 @@ def landcover(arr, fp, ml):
     """
     types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
     lc = h5.File(fp)["Landcover"]
-    lc_ml = multilook_median(lc, ml[0], ml[1])
+    lc_ml = multilook_mode(lc, ml[0], ml[1])
     lc_ml = convert_landcover(lc_ml)
 
     lc_loop = np.empty((arr.shape[0], 3)) # np.unique(lc_ml).shape[0]))
