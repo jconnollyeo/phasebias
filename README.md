@@ -33,4 +33,6 @@ To recreate Figure 3 from Yasser’s paper:
 
 i: start ifg 
 
-m:  
+m: length of m-day ifg (see paper for explanation). if m != 0, the code will produce a single image with n=60 and m=m, while if m==0 then it will reproduce the whole figure from m=6, 12, ..., 36.
+
+g: grid boolean. If True (1), segments the data by taking the mean of each segment for the plots. Helps to show deviations from 0 for the loop closure in the maps. 
