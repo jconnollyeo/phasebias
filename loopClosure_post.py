@@ -5,6 +5,7 @@ from datetime import datetime
 from utils import multilook
 # from Fig3_Yasser import multilook_median 
 import h5py as h5
+from statistics import mode
 
 # Import the data
 fp = '/home/jacob/phase_bias/12_6_6/data/*.npy'
@@ -17,56 +18,73 @@ save = False
 
 landcover_fp = "/workspace/rapidsar_test_data/south_yorkshire/datacrop_20220204.h5"
 
-def multilook_median(im, fa=3, fr=12):
-    """ Averages image over multiple pixels where NaN are present and want to be maintained
-    Adapted from RapidSAR's multilook func.
-    Input:
-      im      2D image to be averaged
-      fa      number of pixels to average over in azimuth (row) direction
-      fr      number of pixels to average over in range (column) direction
-    Output:
-      imout   2D averaged image
-    """
-    nr = int(np.floor(len(im[0,:])/float(fr))*fr)
-    na = int(np.floor(len(im[:,0])/float(fa))*fa)
-    im = im[:na,:nr]
-    aa = np.ones((fa,int(na/fa),nr),dtype=im.dtype)*np.nan
-    for k in range(fa):
-        aa[k,:,:] = im[k::fa,:]
-    aa = np.nanmean(aa,axis=0)
-    imout=np.ones((fr,int(na/fa),int(nr/fr)),dtype=im.dtype)*np.nan
-    for k in range(fr):
-        imout[k,:,:] = aa[:,k::fr]
-    return np.median(imout, axis=0)
+def multilook_mode(arr, ml, preserve_res=True):
+    start_indices_i = np.arange(arr.shape[0])[::ml[0]]
+    start_indices_j = np.arange(arr.shape[1])[::ml[1]]
+    
+    out = np.zeros(arr.shape, dtype=arr.dtype)
+
+    for i in start_indices_i:
+        for j in start_indices_j:
+            out[i:i+ml[0], j:j+ml[1]] = mode(arr[i:i+ml[0], j:j+ml[1]].flatten())
+
+    if preserve_res:
+        return out
+    else:
+        end_i = out.shape[0] % ml[0]
+        end_j = out.shape[1] % ml[1]
+
+        if end_i == 0:
+            end_i = None
+        else:
+            end_i = -1*end_i
+
+        if end_j == 0:
+            end_j = None
+        else:
+            end_j = -1*end_j
+
+        return out[:end_i:ml[0], :end_j:ml[1]]
 
 def convert_landcover(im):
+    """
+    Keeps the urban,  classification the same.
+
+    Args:
+        im (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     out = im.copy()
 
-    out[np.logical_and(im >= 111, im <= 126)] = 111
-    out[np.logical_or(im == 90, im == 80)] = 200
-    out[np.logical_or(im == 70, im == 200)] = 200
-    
+    out[np.logical_and(im >= 111, im <= 126)] = 111 # Forests
+    out[np.logical_or(im == 90, im == 80)] = 200 # Water
+    out[np.logical_or(im == 70, im == 200)] = 200 # Water
+    out[np.logical_or(im == 20, im == 30)] = 20 # shrubs, herb veg, moss
+    out[np.logical_or(im == 20, im == 100)] = 20 
+
     return out
 
-def landcover(ml, segment, fp):
+def landcover(arr, landcover_fp, ml):
+    """
+    Args:
+        arr (3d array): 3d array of the loop closure. Along the zeroth axis, each 2d array is of 
+                        a different m-day interferogram loop. 
+    """
     types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
-    lc = h5.File(fp)["Landcover"]
-    print (lc.shape)
-    lc_ml = multilook_median(lc, ml[0], ml[1])
-    lc_ml = convert_landcover(lc_ml)
-    # i = list(np.arange(lc_ml.shape[0])[::segment])
-    # i.append(None)
-
-    # j = list(np.arange(lc_ml.shape[1])[::segment])
-    # j.append(None)
-
-    # out = np.empty(lc_ml.shape, dtype=type(lc_ml[0, 0]))
-
-    # for i_start, i_end in zip(i[:-1], i[1:]):
-    #     for j_start, j_end in zip(j[:-1], j[1:]):
-    #         out[i_start:i_end, j_start:j_end] = np.mean(lc_ml[i_start:i_end, j_start:j_end])
-
-    return lc_ml
+    lc = h5.File(landcover_fp)["Landcover"]
+    lc_conv = convert_landcover(np.array(lc))
+    lc_ml = multilook_mode(lc_conv, ml, preserve_res=False)
+    print (lc_ml.shape)
+    print (arr.shape)
+    lc_loop = np.empty((arr.shape[0], 4))
+    for i, im in enumerate(arr):
+        for l, lc_type in enumerate(np.array([111, 50, 40, 20])):
+            # print (np.sum(lc_ml == lc_type))
+            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[lc_ml == lc_type]))
+    
+    return lc_loop, [types[111], types[50], types[40], types[20]]
 
 def extractDates(fns):
     dates_primary = []
@@ -153,38 +171,32 @@ def plotTimeseries(data, data_complex, dates_primary, size=100):
     mdata_ = np.angle(mdata.reshape((mdata.shape[0], np.prod(mdata.shape[1:]))))
     
     # Landcover dependence
+    landcover_fp = "/workspace/rapidsar_test_data/south_yorkshire/datacrop_20220204.h5"
 
     ml = [3, 12]
-    lc = landcover(ml, size, landcover_fp)
+    lc, lc_types = landcover(data, landcover_fp, ml)
     types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
+    print (np.array(lc).shape)
     
-    # for lc_type in [111, 50, 40]:
-    #     ts = []
-    #     mask = lc == lc_type
-    #     # print (mask.shape)
-    #     for ifg in data_complex:
-    #         # print (ifg.shape)
-    #         ts.append(np.angle(np.sum(ifg[mask])))
-    #     ax_TS[1].plot(dates_primary, np.cumsum(np.array(ts)), label=types[lc_type])
-    # ax_TS[1].legend()
+    for l, lc_type in enumerate([111, 50, 40, 20]):
+        ax_TS[1].plot(dates_primary, np.cumsum(np.array(lc[:, l])), label=types[lc_type])
+    ax_TS[1].legend()
     # Normal way with segments
 
-    for m in mdata_.T:
-        ax_TS[1].plot(dates_primary, np.cumsum(m))
-    ax_TS[1].set_title("Cumulative sum of mean closure phase of each segment")
+    ax_TS[1].set_title("Cumulative sum of mean closure phase of each landcover")
 
     # Plot the season boundaries
-    plt.axvline(x=datetime.strptime("20210201", "%Y%m%d"), color="red")
-    plt.axvline(x=datetime.strptime("20210501", "%Y%m%d"), color="red")
-    plt.axvline(x=datetime.strptime("20210801", "%Y%m%d"), color="red")
-    plt.axvline(x=datetime.strptime("20211101", "%Y%m%d"), color="red")
+    plt.axvline(x=datetime.strptime("20210201", "%Y%m%d"), color="red", alpha=0.4)
+    plt.axvline(x=datetime.strptime("20210501", "%Y%m%d"), color="red", alpha=0.4)
+    plt.axvline(x=datetime.strptime("20210801", "%Y%m%d"), color="red", alpha=0.4)
+    plt.axvline(x=datetime.strptime("20211101", "%Y%m%d"), color="red", alpha=0.4)
     if save:
         fig.savefig("12_6_6/ML12_48/timeseries_mean_loop_closure.png")
     
     return fig
 
 def main():
-    size=20
+    size=40
     
     dates_primary, dates_secondary = extractDates(data_fns)
 
