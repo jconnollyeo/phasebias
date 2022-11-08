@@ -55,10 +55,10 @@ def parse_args():
                         help="Multilook factor",
                         default='3,12')
     parser.add_argument("-g",
-                        type=bool,
+                        type=int,
                         dest='grid',
                         help="Segment into grids",
-                        default=False)
+                        default=0)
     args = parser.parse_args()
     return vars(args)
 
@@ -73,15 +73,9 @@ def check_chain(dates, length):
         else:
             print (d, length)
             raise Exception(f"Not a full closed loop: {length = }, {d = }, {d+timedelta(days=length) = }\n\n {dates}")
-            # return False, []
     print (ixs)
     return True, ixs
 
-# def check_all_dates(dates, length):
-
-    
-
-#     return ixs
 
 def main():
     plt.rcParams['image.cmap'] = 'RdYlBu'
@@ -93,23 +87,23 @@ def main():
     m = int(args_dict["m"])
     n = int(args_dict["n"])
     ml = np.array(args_dict["multilook"].split(','), dtype=int)
-    grid = args_dict["grid"]
-
+    grid = bool(args_dict["grid"])
     fns = getFiles(wdir)
 
     save_bool = args_dict["save"]
     plot = args_dict["plot"]
-
     if m:
-        diff = doLoops(fns, start, length, m, n, ml)
+        n_loop = doLoops(fns, start, length, delta=n, ml=ml) # 60 day loop for 360 days
+
+        m_loop = doLoops(fns, start, length, delta=m, ml=ml) # 60 day loop for 360 days
+        diff = np.angle(np.exp(1j*(n_loop - m_loop)))    
+
         plt.matshow(diff)
         plt.colorbar()
     else:
         shape = multilook(np.array(h5.File(fns[0])['Phase']), ml[0], ml[1]).shape
-        # shape = doLoops(fns, start, length, 6, n, ml).shape
         out = np.empty((6, *shape))
         
-        # fig, ax = plt.subplots(nrows=2, ncols=3, figsize=(12, 10), sharex=True, sharey=True)
         fig = plt.figure(figsize=(12, 15))
         ax = np.array([fig.add_subplot(331),
         fig.add_subplot(332),
@@ -119,26 +113,30 @@ def main():
         fig.add_subplot(336),
         fig.add_subplot(313)])
         
+        n_loop = doLoops(fns, start, length, delta=n, ml=ml) # 60 day loop for 360 days
+
         for a, m in zip(ax[:6], range(6, 37, 6)):
             print (f"{n = }, {m = }")
-            lc = doLoops(fns, start, length, m, n, ml)
+            m_loop = doLoops(fns, start, length, delta=m, ml=ml)
+
+            lc = np.angle(np.exp(1j*(n_loop - m_loop)))
+
             out[int((m/6)-1)] = lc
             if grid:
                 lc = np.angle(splitGrids(np.exp(1j*lc), size=40))
             else:
-                pass
+                print (f"{grid = }")
             a.axis('off')
             
             p = a.matshow(lc, vmax=np.pi, vmin=-np.pi)
             a.set_title(f"{m = }")
+
         np.save("loop_closure.npy", out)
         plt.colorbar(p, ax=ax[:6], shrink=0.8)
         lc_loop, labels = landcover(out, "/workspace/rapidsar_test_data/south_yorkshire/datacrop_20220204.h5", ml)
-        # print (lc_loop.shape)
-        # print (len(labels))
+
         for i, l in enumerate(lc_loop.T):
             ax[-1].plot(np.arange(6, 37, 6), l, label=labels[i])
-        # ax[-1].plot(np.arange(6, 37, 6), lc_loop, label=labels)
         ax[-1].set_xticks(np.arange(6, 37, 6), np.arange(6, 37, 6).astype(str))
         ax[-1].legend()
 
@@ -151,7 +149,7 @@ def main():
         plt.show()
 
 
-def doLoops(fns, start, length, m, n, ml):
+def doLoops(fns, start, length, delta, ml):
     # === Description ===
 
     # The 60 days span the entire 360 days, then the shorter 
@@ -171,78 +169,22 @@ def doLoops(fns, start, length, m, n, ml):
 
     # print (dates[end])
     # Check that chains of n and m day ifgs can be created
-    n_chain_check, n_ixs = check_chain(dates[start:end+1], length=n)
-    print ("Checked n")
-    m_chain_check, m_ixs = check_chain(dates[start:end+1], length=m)
-    print ("Checked m")
-    # Calculate the days
+    delta_chain_check, delta_ixs = check_chain(dates[start:end+1], length=delta)
+    print (f"Checked {delta = }")
 
     # Create daisy chain of n-day ifgs (60 days)
-    n_days = np.arange(0, length+1, n) # [0, 60, 120, 180, ..., 360]  
+    delta_days = np.arange(0, length+1, delta) # [0, 60, 120, 180, ..., 360]  
     shape = multilook(np.asarray(h5.File(fns[0])['Phase']), ml[0], ml[1]).shape # Fetch the shape of the data
-    n_ifgs_summed = np.zeros(shape) 
-    # print (n_ixs[0], n_ixs[-1])
-    # print (dates[n_ixs[0]], dates[n_ixs[-1]])
-    for p_fn, s_fn in zip(n_ixs[:-1], n_ixs[1:]): 
-        print (f"n, {p_fn = }, {s_fn = }", end='\r')
+    delta_ifgs_summed = np.zeros(shape) 
+
+    for p_fn, s_fn in zip(delta_ixs[:-1], delta_ixs[1:]): 
+        print (f"delta, {p_fn = }, {s_fn = }", end='\r')
         p = np.asarray(h5.File(fns[p_fn])['Phase']) 
         s = np.asarray(h5.File(fns[s_fn])['Phase']) 
 
-        n_ifgs_summed += np.angle(multilook(np.exp(1j*(s-p)), ml[0], ml[1]))
-
-    # Create a daisy chain of m-day ifgs (6, 12, 18, etc. days)
-    m_days = np.arange(0, length+1, m)
-    m_ifgs_summed = np.zeros(shape)
-    # print (m_ixs[0], m_ixs[-1])
-    # print (dates[m_ixs[0]], dates[m_ixs[-1]])
+        delta_ifgs_summed += np.angle(multilook(np.exp(1j*(s-p)), ml[0], ml[1]))
     
-    for p_fn, s_fn in zip(m_ixs[:-1], m_ixs[1:]):
-        print (f"m, {p_fn = }, {s_fn = }", end='\r')
-        p = np.asarray(h5.File(fns[p_fn])['Phase'])
-        s = np.asarray(h5.File(fns[s_fn])['Phase'])
-
-        m_ifgs_summed += np.angle(multilook(np.exp(1j*(s-p)), ml[0], ml[1]))
-    
-    # Find the difference between them
-    diff = np.angle(np.exp(1j*(n_ifgs_summed - m_ifgs_summed)))
-
-    # Return the difference
-    return diff
-
-# def multilook_mode(im, fa=3, fr=12):
-#     """ Averages image over multiple pixels where NaN are present and want to be maintained
-#     Adapted from RapidSAR's multilook func.
-#     Input:
-#       im      2D image to be averaged
-#       fa      number of pixels to average over in azimuth (row) direction
-#       fr      number of pixels to average over in range (column) direction
-#     Output:
-#       imout   2D averaged image
-#     """
-#     nr = int(np.floor(len(im[0,:])/float(fr))*fr)
-#     na = int(np.floor(len(im[:,0])/float(fa))*fa)
-#     im = im[:na,:nr]
-#     aa = np.ones((fa,int(na/fa),nr),dtype=im.dtype)*np.nan
-#     # print (aa)
-#     for k in range(fa):
-#         aa[k,:,:] = im[k::fa,:]
-#     aa_ = np.empty(aa.shape[1:], dtype=aa.dtype)
-#     for i in range(aa.shape[1]):
-#         for j in range(aa.shape[2]):
-#             aa_[i, j] = mode(aa[:, i, j])
-
-#     # aa = np.nanmean(aa,axis=0)
-#     # print (aa.shape)
-#     imout=np.ones((fr,int(na/fa),int(nr/fr)),dtype=im.dtype)*np.nan
-#     for k in range(fr):
-#         imout[k,:,:] = aa_[:,k::fr]
-#     # print (imout.shape)
-#     out = np.empty(imout.shape[1:], dtype=imout.dtype)
-#     for i in range(imout.shape[1]):
-#         for j in range(imout.shape[2]):
-#             out[i, j] = mode(imout[:, i, j])
-
-#     return out
+    return delta_ifgs_summed
 
 def multilook_mode(arr, ml, preserve_res=True):
     start_indices_i = np.arange(arr.shape[0])[::ml[0]]
@@ -304,12 +246,9 @@ def landcover(arr, fp, ml):
     lc_ml = multilook_mode(lc_conv, ml, preserve_res=False)
     print (lc_ml.shape)
     
-    # plt.matshow(lc_ml)
-    # plt.show()
-    
-    lc_loop = np.empty((arr.shape[0], 3)) # np.unique(lc_ml).shape[0]))
+    lc_loop = np.empty((arr.shape[0], 4))
     for i, im in enumerate(arr):
-        for l, lc_type in enumerate(np.array([111, 50, 40, 20])): # np.unique(lc_ml)
+        for l, lc_type in enumerate(np.array([111, 50, 40, 20])):
             # print (np.sum(lc_ml == lc_type))
             lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[lc_ml == lc_type]))
     
