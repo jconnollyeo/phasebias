@@ -118,9 +118,8 @@ def main():
         fig.add_subplot(335),
         fig.add_subplot(336),
         fig.add_subplot(313)])
-
+        
         for a, m in zip(ax[:6], range(6, 37, 6)):
-        # for a, m in zip([ax[0]], [36]):
             print (f"{n = }, {m = }")
             lc = doLoops(fns, start, length, m, n, ml)
             out[int((m/6)-1)] = lc
@@ -142,6 +141,7 @@ def main():
         # ax[-1].plot(np.arange(6, 37, 6), lc_loop, label=labels)
         ax[-1].set_xticks(np.arange(6, 37, 6), np.arange(6, 37, 6).astype(str))
         ax[-1].legend()
+
     if save_bool:
         plt.savefig("test.jpg")
     else:
@@ -209,53 +209,87 @@ def doLoops(fns, start, length, m, n, ml):
     # Return the difference
     return diff
 
-def multilook_mode(im, fa=3, fr=12):
-    """ Averages image over multiple pixels where NaN are present and want to be maintained
-    Adapted from RapidSAR's multilook func.
-    Input:
-      im      2D image to be averaged
-      fa      number of pixels to average over in azimuth (row) direction
-      fr      number of pixels to average over in range (column) direction
-    Output:
-      imout   2D averaged image
-    """
-    nr = int(np.floor(len(im[0,:])/float(fr))*fr)
-    na = int(np.floor(len(im[:,0])/float(fa))*fa)
-    im = im[:na,:nr]
-    aa = np.ones((fa,int(na/fa),nr),dtype=im.dtype)*np.nan
-    # print (aa)
-    for k in range(fa):
-        aa[k,:,:] = im[k::fa,:]
-    aa_ = np.empty(aa.shape[1:], dtype=aa.dtype)
-    for i in range(aa.shape[1]):
-        for j in range(aa.shape[2]):
-            aa_[i, j] = mode(aa[:, i, j])
+# def multilook_mode(im, fa=3, fr=12):
+#     """ Averages image over multiple pixels where NaN are present and want to be maintained
+#     Adapted from RapidSAR's multilook func.
+#     Input:
+#       im      2D image to be averaged
+#       fa      number of pixels to average over in azimuth (row) direction
+#       fr      number of pixels to average over in range (column) direction
+#     Output:
+#       imout   2D averaged image
+#     """
+#     nr = int(np.floor(len(im[0,:])/float(fr))*fr)
+#     na = int(np.floor(len(im[:,0])/float(fa))*fa)
+#     im = im[:na,:nr]
+#     aa = np.ones((fa,int(na/fa),nr),dtype=im.dtype)*np.nan
+#     # print (aa)
+#     for k in range(fa):
+#         aa[k,:,:] = im[k::fa,:]
+#     aa_ = np.empty(aa.shape[1:], dtype=aa.dtype)
+#     for i in range(aa.shape[1]):
+#         for j in range(aa.shape[2]):
+#             aa_[i, j] = mode(aa[:, i, j])
 
-    # aa = np.nanmean(aa,axis=0)
-    # print (aa.shape)
-    imout=np.ones((fr,int(na/fa),int(nr/fr)),dtype=im.dtype)*np.nan
-    for k in range(fr):
-        imout[k,:,:] = aa_[:,k::fr]
-    # print (imout.shape)
-    out = np.empty(imout.shape[1:], dtype=imout.dtype)
-    for i in range(imout.shape[1]):
-        for j in range(imout.shape[2]):
-            out[i, j] = mode(imout[:, i, j])
+#     # aa = np.nanmean(aa,axis=0)
+#     # print (aa.shape)
+#     imout=np.ones((fr,int(na/fa),int(nr/fr)),dtype=im.dtype)*np.nan
+#     for k in range(fr):
+#         imout[k,:,:] = aa_[:,k::fr]
+#     # print (imout.shape)
+#     out = np.empty(imout.shape[1:], dtype=imout.dtype)
+#     for i in range(imout.shape[1]):
+#         for j in range(imout.shape[2]):
+#             out[i, j] = mode(imout[:, i, j])
 
-    return out
+#     return out
 
-    # print (imout.shape)
+def multilook_mode(arr, ml, preserve_res=True):
+    start_indices_i = np.arange(arr.shape[0])[::ml[0]]
+    start_indices_j = np.arange(arr.shape[1])[::ml[1]]
     
+    out = np.zeros(arr.shape, dtype=arr.dtype)
 
-    # return mode(imout, axis=0)
+    for i in start_indices_i:
+        for j in start_indices_j:
+            out[i:i+ml[0], j:j+ml[1]] = mode(arr[i:i+ml[0], j:j+ml[1]].flatten())
+
+    if preserve_res:
+        return out
+    else:
+        end_i = out.shape[0] % ml[0]
+        end_j = out.shape[1] % ml[1]
+
+        if end_i == 0:
+            end_i = None
+        else:
+            end_i = -1*end_i
+
+        if end_j == 0:
+            end_j = None
+        else:
+            end_j = -1*end_j
+
+        return out[:end_i:ml[0], :end_j:ml[1]]
 
 def convert_landcover(im):
+    """
+    Keeps the urban,  classification the same.
+
+    Args:
+        im (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     out = im.copy()
 
-    out[np.logical_and(im >= 111, im <= 126)] = 111
-    out[np.logical_or(im == 90, im == 80)] = 200
-    out[np.logical_or(im == 70, im == 200)] = 200
-    
+    out[np.logical_and(im >= 111, im <= 126)] = 111 # Forests
+    out[np.logical_or(im == 90, im == 80)] = 200 # Water
+    out[np.logical_or(im == 70, im == 200)] = 200 # Water
+    out[np.logical_or(im == 20, im == 30)] = 20 # shrubs, herb veg, moss
+    out[np.logical_or(im == 20, im == 100)] = 20 
+
     return out
 
 def landcover(arr, fp, ml):
@@ -266,15 +300,20 @@ def landcover(arr, fp, ml):
     """
     types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
     lc = h5.File(fp)["Landcover"]
-    lc_ml = multilook_mode(lc, ml[0], ml[1])
-    lc_ml = convert_landcover(lc_ml)
-
+    lc_conv = convert_landcover(np.array(lc))
+    lc_ml = multilook_mode(lc_conv, ml, preserve_res=False)
+    print (lc_ml.shape)
+    
+    # plt.matshow(lc_ml)
+    # plt.show()
+    
     lc_loop = np.empty((arr.shape[0], 3)) # np.unique(lc_ml).shape[0]))
     for i, im in enumerate(arr):
-        for l, lc_type in enumerate(np.array([111, 50, 40])): # np.unique(lc_ml)
+        for l, lc_type in enumerate(np.array([111, 50, 40, 20])): # np.unique(lc_ml)
+            # print (np.sum(lc_ml == lc_type))
             lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[lc_ml == lc_type]))
     
-    return lc_loop, [types[111], types[50], types[40]]
+    return lc_loop, [types[111], types[50], types[40], types[20]]
 
 if __name__ == "__main__":
     sys.exit(main())
