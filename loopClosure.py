@@ -28,18 +28,30 @@ def newIFGs(primary_ix, secondary_ix, im_fns):
 def create_loop(start, end, dates, im_fns, ml=[3, 12]):
     # Getting the dates from the user input indices
     d_ = dates[start:end+1]
-
-    shape = multilook(newIFGs(0, 1, im_fns), ml[0], ml[1]).shape
+    if np.sum(np.array(ml)) != 0:
+        ml_bool = True
+    else:
+        ml_bool = False
+    if ml_bool:
+        shape = multilook(newIFGs(0, 1, im_fns), ml[0], ml[1]).shape
+    else:
+        shape = newIFGs(0, 1, im_fns).shape
 
     # Creating the interferograms 
     ifgs = np.empty((len(d_)-1, *shape), dtype=np.complex64)
     
     print ("Creating interferograms")
     for i, d in enumerate(np.arange(start, end)):
-        ifgs[i] = multilook(newIFGs(d, d+1, im_fns), ml[0], ml[1]) # Complex np.complex64
+        if ml_bool:
+            ifgs[i] = multilook(newIFGs(d, d+1, im_fns), ml[0], ml[1]) # Complex np.complex64
+        else:
+            pass
 
     print ("Creating interferogram spanning whole range")
-    ifg_span = multilook(newIFGs(start, end, im_fns), ml[0], ml[1]) # Complex np.complex64
+    ifg_span = newIFGs(start, end, im_fns)
+    if ml_bool:
+        ifg_span = multilook(ifg_span, ml[0], ml[1]) # Complex np.complex64
+    else: pass
     return ifgs, ifg_span
 
 def phase_closure(ifgs, ifg_span):
@@ -60,11 +72,21 @@ def plot_fig2(ifgs, ifg_span, closure):
 
     fig, ax = plt.subplots(nrows=1, ncols=int(1+num_loop+1), figsize=(4*(num_loop + 2), 6))
 
-    ax[0].matshow(np.angle(ifg_span), cmap="RdYlBu")
+    p = ax[0].matshow(np.angle(ifg_span), cmap="RdYlBu", vmax=np.pi, vmin=-np.pi)
     for i, a in enumerate(ax[1:-1]):
-        a.matshow(np.angle(ifgs[i]), cmap="RdYlBu")
-    ax[-1].matshow(closure, cmap="RdYlBu")
+        a.matshow(np.angle(ifgs[i]), cmap="RdYlBu", vmax=np.pi, vmin=-np.pi)
+        
+    ax[-1].matshow(closure, cmap="RdYlBu", vmax=np.pi, vmin=-np.pi)
+    # ax[0].set_title(titles[0])
+    # ax[1].set_title(titles[1])
+    # ax[2].set_title(titles[2])
 
+    cbar = plt.colorbar(p, ax=ax, shrink=0.6)
+    cbar.ax.set_yticks(
+        [-np.pi, 0, np.pi],
+        [r"$-\pi$", "0", r"$\pi$"],
+    )
+    cbar.ax.set_ylabel("Closure phase (radians)")
     for a in ax:
         a.axis('off')
     
@@ -79,7 +101,7 @@ def plot_fig2(ifgs, ifg_span, closure):
     for index in np.arange(2, len(xs)-2):
         for l in plus(xs, index, fig):
             fig.add_artist(l)
-
+    
     plt.show()
 
 def left_bracket(x, y, index):
@@ -133,6 +155,8 @@ def plot_phase_closure(arr, loop_dates, dates, ml, save, plot):
     """ 
     Func to plot the closure phase in radar coords and as a histogram. The mean amplitude is also plotted in radar coords. 
     """
+    plt.style.use(['seaborn-poster'])    
+
     fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4), gridspec_kw=dict(width_ratios=[1/3, 1/3, 1/3]))
     amp = multilook(np.load("/home/jacob/phase_bias/mean_amp.npy"), ml[0], ml[1])
     ax[0].matshow(amp, vmax=3, cmap="binary_r")
@@ -142,15 +166,18 @@ def plot_phase_closure(arr, loop_dates, dates, ml, save, plot):
     ax[2].axvline(x=0, color='black')
     
     ax[0].get_shared_x_axes().join(ax[0], ax[1])
+    ax[0].get_shared_y_axes().join(ax[0], ax[1])
+
     for a in ax:
         a.grid()
+        a.axis("off")
 
     ax[0].set_title("Mean amplitude")
     ax[1].set_title("Closure phase")
     ax[2].set_title("Closure phase histogram")
-    
+
     plt.suptitle(loop_dates, y=0.08)
-    cbar = plt.colorbar(p, ax=ax[2], orientation='horizontal')
+    cbar = plt.colorbar(p, ax=ax[-1], orientation='horizontal')
     cbar.ax.set_ylabel("Closure phase (radians)")
 
     save_fn = f"12_6_6/ML12_48/{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.png"
@@ -163,6 +190,22 @@ def plot_phase_closure(arr, loop_dates, dates, ml, save, plot):
         plt.show()
     else:
         pass
+
+    fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
+    p1 = ax[0].matshow(amp, vmin=0, vmax=3, cmap="binary_r")
+    cbar1 = plt.colorbar(p1, ax=ax[0], shrink=0.8)
+    cbar1.ax.set_ylabel("Amplitude", fontsize=18)
+    cbar1.ax.set_yticks(range(4), [str(r) for r in range(4)])
+
+    p2 = ax[1].matshow(arr, cmap="RdYlBu", vmin=-np.pi, vmax=np.pi)
+    cbar2 = plt.colorbar(p2, ax=ax[1], shrink=0.8)
+    cbar2.ax.set_ylabel("Closure phase (radians)", fontsize=18)
+    cbar2.ax.set_yticks([-np.pi, 0, np.pi], ["$-\pi$", "0", "$\pi$"])
+    
+    ax[0].axis("off")
+    ax[1].axis("off")
+    fig.savefig("phase_closure_map.png") 
+
 
 def parse_args():
     """
@@ -190,17 +233,25 @@ def parse_args():
                         help="Multilook factor",
                         default='3,12')
     parser.add_argument("-s",
-                        type=bool,
+                        type=int,
                         dest="save",
                         help="Boolean to save (True) or not save (False).",
                         default=1)
     parser.add_argument("-p",
-                        type=bool,
+                        type=int,
                         dest="plot",
                         help="Boolean to show plot (True) or not show plot (False).",
                         default=1)
     args = parser.parse_args()
     return vars(args)
+
+def getFiles(wdir):
+    
+    fns = [file for file in glob.glob(str(wdir), recursive=True)]
+
+    fns.sort()
+    
+    return fns
 
 def main():
     args_dict = parse_args()
@@ -208,11 +259,11 @@ def main():
     start = int(args_dict["start_index"])
     delta = int(args_dict["loop_delta"])
     ml = np.array(args_dict["multilook"].split(','), dtype=int)
-    save_bool = args_dict["save"]
-    plot = args_dict["plot"]
+    save_bool = bool(args_dict["save"])
+    plot = bool(args_dict["plot"])
     # Make a list of all the images
     im_path = wdir + 'IFG/singlemaster/*/*.*'
-
+    
     im_fns = [file for file in glob.glob(str(im_path), recursive=True)]
 
     im_fns.sort() # Sort the images by date
@@ -228,9 +279,10 @@ def main():
     loop_dates = f"{(dates[end]-dates[start]).days} - (" + ', '.join(loop_days) + f") | ML = [{ml[0]}, {ml[1]}] \n\
         {dates[start].strftime('%Y%m%d')} to {dates[end].strftime('%Y%m%d')}"
     arr = phase_closure(ifgs, ifg_span)
-
+    print (loop_dates)
     plot_phase_closure(arr, loop_dates, dates, ml, save_bool, plot)
-
+    
+    plt.style.use(['seaborn-poster'])    
     plot_fig2(ifgs, ifg_span, arr)
 
 if __name__ == "__main__":

@@ -1,11 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import glob
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils import multilook
 # from Fig3_Yasser import multilook_median 
 import h5py as h5
 from statistics import mode
+import matplotlib.dates as mdates
 
 # Import the data
 fp = '/home/jacob/phase_bias/12_6_6/data/*.npy'
@@ -163,6 +164,8 @@ def plotSegments(data, data_complex, ix, dates_primary, size=100):
     return None
 
 def plotTimeseries(data, data_complex, dates_primary, size=100):
+    plt.style.use(['seaborn-poster'])    
+
     fig, ax_TS = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
     ax_TS[0].plot(dates_primary, np.cumsum(np.array([np.mean(d) for d in data])))
     ax_TS[0].set_title("Cumulative sum of mean closure phase for entire image")
@@ -192,7 +195,28 @@ def plotTimeseries(data, data_complex, dates_primary, size=100):
     plt.axvline(x=datetime.strptime("20211101", "%Y%m%d"), color="red", alpha=0.4)
     if save:
         fig.savefig("12_6_6/ML12_48/timeseries_mean_loop_closure.png")
+    dates_middle = [d+timedelta(days=6) for d in dates_primary]
+    monthly = [datetime.strptime(str(202101 + m), "%Y%m") for m in range(12)]
+    # For presentation
+    fig, ax = plt.subplots(figsize=(12, 8))
+    for l, lc_type in enumerate([111, 50, 40, 20]):
+        ax.plot(dates_middle, np.cumsum(np.array(lc[:, l])), label=types[lc_type])
+    ax.legend()
+    ax.set_title("Cumulative sum of mean closure phase landcover type")
+    ax.set_ylabel(r"Phase closure, $\Delta\phi$ (radians)")
+    ax.set_xlabel("Date")
+
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=range(1,13,1)))
+    # you can change the format of the label (now it is 2016-Jan)  
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%b'))
+    plt.setp(ax.get_xticklabels(), rotation=45) 
+    plt.grid()
     
+    
+    plt.show()
+    
+
+
     return fig
 
 def main():
@@ -206,8 +230,8 @@ def main():
     # Plot the timeseries of mean closure phase for the whole image
     plotTimeseries(data, data_complex, dates_primary, size=size)
     plt.show()
-    for ix in np.arange(data.shape[0]):
-        plotSegments(data, data_complex, ix, dates_primary, size=size)
+    # for ix in np.arange(data.shape[0]):
+    #     plotSegments(data, data_complex, ix, dates_primary, size=size)
         # plt.close()
     plt.show()
 
