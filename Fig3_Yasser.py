@@ -182,7 +182,7 @@ def doLoops(fns, start, length, delta, ml):
         p = np.asarray(h5.File(fns[p_fn])['Phase']) 
         s = np.asarray(h5.File(fns[s_fn])['Phase']) 
 
-        delta_ifgs_summed += np.angle(multilook(np.exp(1j*(s-p)), ml[0], ml[1]))
+        delta_ifgs_summed += np.angle(multilook(np.exp(1j*(p-s)), ml[0], ml[1]))
     
     return delta_ifgs_summed
 
