@@ -244,13 +244,18 @@ def landcover(arr, fp, ml):
     lc = h5.File(fp)["Landcover"]
     lc_conv = convert_landcover(np.array(lc))
     lc_ml = multilook_mode(lc_conv, ml, preserve_res=False)
-    print (lc_ml.shape)
     
+    
+    print (lc_ml.shape)
+
+    mask = multilook(np.load("mean_coherence_20201228_20211217.npy"), ml[0], ml[1]) > 0.3
+    
+
     lc_loop = np.empty((arr.shape[0], 4))
     for i, im in enumerate(arr):
         for l, lc_type in enumerate(np.array([111, 50, 40, 20])):
             # print (np.sum(lc_ml == lc_type))
-            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[lc_ml == lc_type]))
+            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & mask]))
     
     return lc_loop, [types[111], types[50], types[40], types[20]]
 
