@@ -527,3 +527,4 @@ industry/closure_phase_sum.png
 *.png
 *.jpeg
 *.svg
+loop_closure.npy
