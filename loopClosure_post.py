@@ -197,13 +197,14 @@ def plotTimeseries(data, data_complex, dates_primary, size=100):
         fig.savefig("12_6_6/ML12_48/timeseries_mean_loop_closure.png")
     dates_middle = [d+timedelta(days=6) for d in dates_primary]
     monthly = [datetime.strptime(str(202101 + m), "%Y%m") for m in range(12)]
+
     # For presentation
     fig, ax = plt.subplots(figsize=(12, 8))
     for l, lc_type in enumerate([111, 50, 40, 20]):
         ax.plot(dates_middle, np.cumsum(np.array(lc[:, l])), label=types[lc_type])
     ax.legend()
-    ax.set_title("Cumulative sum of mean closure phase landcover type")
-    ax.set_ylabel(r"Phase closure, $\Delta\phi$ (radians)")
+    ax.set_title("Cumulative sum of mean closure phase by landcover type")
+    ax.set_ylabel(r"Phase closure, $\phi_{loop}$ (radians)")
     ax.set_xlabel("Date")
 
     ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=range(1,13,1)))
