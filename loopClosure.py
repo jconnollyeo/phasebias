@@ -21,8 +21,9 @@ def newIFGs(primary_ix, secondary_ix, im_fns):
     p1 = np.exp(1j*np.asarray(h5.File(im_fns[primary_ix])['Phase']))
     p2 = np.exp(1j*np.asarray(h5.File(im_fns[secondary_ix])['Phase']))
     
-    ifg = p2*p1.conjugate()
+    # ifg = p2*p1.conjugate()
 
+    ifg = p1*p2.conjugate()
     return ifg
 
 def create_loop(start, end, dates, im_fns, ml=[3, 12]):
@@ -66,7 +67,7 @@ def phase_closure(ifgs, ifg_span):
     # Returning the phase closure in radians and the figure title
     return np.angle(closure)
 
-def plot_fig2(ifgs, ifg_span, closure):
+def plot_fig2(ifgs, ifg_span, closure, plot):
 
     num_loop = ifgs.shape[0]
 
@@ -101,8 +102,9 @@ def plot_fig2(ifgs, ifg_span, closure):
     for index in np.arange(2, len(xs)-2):
         for l in plus(xs, index, fig):
             fig.add_artist(l)
-    
-    plt.show()
+    if plot:
+        plt.show()
+    else: pass
 
 def left_bracket(x, y, index):
 
@@ -180,10 +182,13 @@ def plot_phase_closure(arr, loop_dates, dates, ml, save, plot):
     cbar = plt.colorbar(p, ax=ax[-1], orientation='horizontal')
     cbar.ax.set_ylabel("Closure phase (radians)")
 
-    save_fn = f"12_6_6/ML12_48/{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.png"
+    # save_fn = f"12_6_6/ML12_48/{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.png"
+    save_fn_plot = f"12_6_6/figures/{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.png"
+    save_fn_data = f"12_6_6/data/{loop_dates.split(' ')[-3]}_{loop_dates.split(' ')[-1]}.npy"
+
     if save:
-        plt.savefig(save_fn)
-        np.save(save_fn[:-4] + ".npy", arr)
+        plt.savefig(save_fn_plot)
+        np.save(save_fn_data, arr)
     else:
         pass
     if plot:
@@ -283,7 +288,7 @@ def main():
     plot_phase_closure(arr, loop_dates, dates, ml, save_bool, plot)
     
     plt.style.use(['seaborn-poster'])    
-    plot_fig2(ifgs, ifg_span, arr)
+    plot_fig2(ifgs, ifg_span, arr, plot)
 
 if __name__ == "__main__":
     sys.exit(main())
