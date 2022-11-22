@@ -192,12 +192,18 @@ def multilook_mode(arr, ml, preserve_res=True):
     
     out = np.zeros(arr.shape, dtype=arr.dtype)
 
+    perc = np.zeros(arr.shape, dtype=float)
+
     for i in start_indices_i:
         for j in start_indices_j:
-            out[i:i+ml[0], j:j+ml[1]] = mode(arr[i:i+ml[0], j:j+ml[1]].flatten())
-
+            m = mode(arr[i:i+ml[0], j:j+ml[1]].flatten())
+            out[i:i+ml[0], j:j+ml[1]] = m
+            p = np.sum(arr[i:i+ml[0], j:j+ml[1]] == m)/\
+                        (out[i:i+ml[0], j:j+ml[1]].size)
+            # print (p)
+            perc[i:i+ml[0], j:j+ml[1]] = p
     if preserve_res:
-        return out
+        return out, perc
     else:
         end_i = out.shape[0] % ml[0]
         end_j = out.shape[1] % ml[1]
@@ -212,7 +218,10 @@ def multilook_mode(arr, ml, preserve_res=True):
         else:
             end_j = -1*end_j
 
-        return out[:end_i:ml[0], :end_j:ml[1]]
+        out = out[:end_i:ml[0], :end_j:ml[1]]
+        perc = perc[:end_i:ml[0], :end_j:ml[1]]
+
+        return out, perc
 
 def convert_landcover(im):
     """
@@ -243,9 +252,10 @@ def landcover(arr, fp, ml):
     types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
     lc = h5.File(fp)["Landcover"]
     lc_conv = convert_landcover(np.array(lc))
-    lc_ml = multilook_mode(lc_conv, ml, preserve_res=False)
-    
-    
+    lc_ml, perc = multilook_mode(lc_conv, ml, preserve_res=False)
+
+    perc_mask = perc == 1
+
     print (lc_ml.shape)
 
     mask = multilook(np.load("mean_coherence_20201228_20211217.npy"), ml[0], ml[1]) > 0.3
@@ -255,7 +265,7 @@ def landcover(arr, fp, ml):
     for i, im in enumerate(arr):
         for l, lc_type in enumerate(np.array([111, 50, 40, 20])):
             # print (np.sum(lc_ml == lc_type))
-            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & mask]))
+            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & mask & perc_mask]))
     
     return lc_loop, [types[111], types[50], types[40], types[20]]
 
