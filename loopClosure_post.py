@@ -19,18 +19,36 @@ save = False
 
 landcover_fp = "/workspace/rapidsar_test_data/south_yorkshire/datacrop_20220204.h5"
 
+rain = ['140.2', '105.0', '86.8', '20.6', '121.4', '44.7', '75.3', '66.5', '82.4', '168.7', '78.1', '114.4']
+rain = [float(r) for r in rain]
+temp = np.array([3.3, 5.1, 7.3, 6.6, 10.1, 15.4, 17.6, 16.1, 15.9, 12.1, 7.8, 6.4])
+
+months = np.array([datetime.strptime(str(int(data_fns[0].split("/")[-1][:6])+m), "%Y%m") for m in range(12)])
+
+rain_bool = False
+
 def multilook_mode(arr, ml, preserve_res=True):
     start_indices_i = np.arange(arr.shape[0])[::ml[0]]
     start_indices_j = np.arange(arr.shape[1])[::ml[1]]
     
     out = np.zeros(arr.shape, dtype=arr.dtype)
 
+    perc = np.zeros(arr.shape, dtype=float)
+
     for i in start_indices_i:
         for j in start_indices_j:
-            out[i:i+ml[0], j:j+ml[1]] = mode(arr[i:i+ml[0], j:j+ml[1]].flatten())
+            m = mode(arr[i:i+ml[0], j:j+ml[1]].flatten())
+            out[i:i+ml[0], j:j+ml[1]] = m
+            p = np.sum(arr[i:i+ml[0], j:j+ml[1]] == m)/\
+                        (out[i:i+ml[0], j:j+ml[1]].size)
+            # print (p)
+            perc[i:i+ml[0], j:j+ml[1]] = p
+
+    
+    print (np.mean(perc), np.std(perc))
 
     if preserve_res:
-        return out
+        return out, perc
     else:
         end_i = out.shape[0] % ml[0]
         end_j = out.shape[1] % ml[1]
@@ -45,7 +63,10 @@ def multilook_mode(arr, ml, preserve_res=True):
         else:
             end_j = -1*end_j
 
-        return out[:end_i:ml[0], :end_j:ml[1]]
+        out = out[:end_i:ml[0], :end_j:ml[1]]
+        perc = perc[:end_i:ml[0], :end_j:ml[1]]
+
+        return out, perc
 
 def convert_landcover(im):
     """
@@ -67,24 +88,29 @@ def convert_landcover(im):
 
     return out
 
-def landcover(arr, landcover_fp, ml):
+def landcover(arr, fp, ml):
     """
     Args:
         arr (3d array): 3d array of the loop closure. Along the zeroth axis, each 2d array is of 
                         a different m-day interferogram loop. 
     """
     types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
-    lc = h5.File(landcover_fp)["Landcover"]
+    lc = h5.File(fp)["Landcover"]
     lc_conv = convert_landcover(np.array(lc))
-    lc_ml = multilook_mode(lc_conv, ml, preserve_res=False)
+    lc_ml, perc = multilook_mode(lc_conv, ml, preserve_res=False)
+
+    perc_mask = perc > 0.7
     print (lc_ml.shape)
-    print (arr.shape)
+
+    # coh_mask = multilook(np.load("mean_coherence_20201228_20211217.npy"), ml[0], ml[1]) > 0.3
+    coh_mask = multilook(np.load("mean_coherence_20191228_20201228.npy"), ml[0], ml[1]) > 0.3
+    
     lc_loop = np.empty((arr.shape[0], 4))
     for i, im in enumerate(arr):
         for l, lc_type in enumerate(np.array([111, 50, 40, 20])):
-            # print (np.sum(lc_ml == lc_type))
-            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[lc_ml == lc_type]))
-    
+            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & coh_mask & perc_mask]))
+            # lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type)])) 
+
     return lc_loop, [types[111], types[50], types[40], types[20]]
 
 def extractDates(fns):
@@ -164,10 +190,17 @@ def plotSegments(data, data_complex, ix, dates_primary, size=100):
     return None
 
 def plotTimeseries(data, data_complex, dates_primary, size=100):
-    plt.style.use(['seaborn-poster'])    
+    # plt.style.use(['seaborn-poster'])    
 
     fig, ax_TS = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
     ax_TS[0].plot(dates_primary, np.cumsum(np.array([np.mean(d) for d in data])))
+    if rain_bool:
+        ax_TS0_rain = ax_TS[0].twinx()
+        ax_TS0_rain.plot(months, rain, 'b--', label="Rainfall")
+        ax_TS0_rain.plot(months, temp*4, 'r--', label="Temperature")
+
+        ax_TS0_rain.legend(loc=4)
+    
     ax_TS[0].set_title("Cumulative sum of mean closure phase for entire image")
     print (data.shape, data_complex.shape)
     mdata = splitTS(data_complex, size=size)
@@ -183,16 +216,22 @@ def plotTimeseries(data, data_complex, dates_primary, size=100):
     
     for l, lc_type in enumerate([111, 50, 40, 20]):
         ax_TS[1].plot(dates_primary, np.cumsum(np.array(lc[:, l])), label=types[lc_type])
+    if rain_bool:
+        ax_TS1_rain = ax_TS[1].twinx()
+        ax_TS1_rain.plot(months, rain, 'b--', label="Rainfall")
+        ax_TS1_rain.plot(months, temp*4, 'r--', label="Temperature")
+        ax_TS1_rain.legend(loc=4)
     ax_TS[1].legend()
+    
     # Normal way with segments
 
     ax_TS[1].set_title("Cumulative sum of mean closure phase of each landcover")
 
     # Plot the season boundaries
-    plt.axvline(x=datetime.strptime("20210201", "%Y%m%d"), color="red", alpha=0.4)
-    plt.axvline(x=datetime.strptime("20210501", "%Y%m%d"), color="red", alpha=0.4)
-    plt.axvline(x=datetime.strptime("20210801", "%Y%m%d"), color="red", alpha=0.4)
-    plt.axvline(x=datetime.strptime("20211101", "%Y%m%d"), color="red", alpha=0.4)
+    plt.axvline(x=datetime.strptime(data_fns[0].split("/")[-1][:4] + "0201", "%Y%m%d"), color="red", alpha=0.4)
+    plt.axvline(x=datetime.strptime(data_fns[0].split("/")[-1][:4] + "0501", "%Y%m%d"), color="red", alpha=0.4)
+    plt.axvline(x=datetime.strptime(data_fns[0].split("/")[-1][:4] + "0801", "%Y%m%d"), color="red", alpha=0.4)
+    plt.axvline(x=datetime.strptime(data_fns[0].split("/")[-1][:4] + "1101", "%Y%m%d"), color="red", alpha=0.4)
     if save:
         fig.savefig("12_6_6/ML12_48/timeseries_mean_loop_closure.png")
     dates_middle = [d+timedelta(days=6) for d in dates_primary]
