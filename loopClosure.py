@@ -151,8 +151,6 @@ def find_bbox(fig, axes):
 
     return xs, ys
 
-
-
 def plot_phase_closure(arr, loop_dates, dates, ml, save, plot): 
     """ 
     Func to plot the closure phase in radar coords and as a histogram. The mean amplitude is also plotted in radar coords. 
@@ -255,7 +253,6 @@ def getFiles(wdir):
     fns = [file for file in glob.glob(str(wdir), recursive=True)]
 
     fns.sort()
-    
     return fns
 
 def main():
