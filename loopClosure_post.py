@@ -96,11 +96,16 @@ def landcover(arr, fp, ml):
     """
     types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
     lc = h5.File(fp)["Landcover"]
-    lc_conv = convert_landcover(np.array(lc))
+    lc_conv = convert_landcover(lc[:])
     lc_ml, perc = multilook_mode(lc_conv, ml, preserve_res=False)
 
-    perc_mask = perc > 0.7
-    print (lc_ml.shape)
+    perc_mask = perc > 0 
+    print (lc_ml.shape)  
+
+    # reliable = h5.File("/workspace/rapidsar_test_data/south_yorkshire/jacob2/velcrop_20221013.h5")["Reliable_Pixels"][:].astype(bool)
+    # reliable_mask = multilook(reliable.astype(int), ml[0], ml[1]) > 0.05
+
+    # print (f"{multilook(reliable.astype(int), ml[0], ml[1]).mean() = }")
 
     # coh_mask = multilook(np.load("mean_coherence_20201228_20211217.npy"), ml[0], ml[1]) > 0.3
     coh_mask = multilook(np.load("mean_coherence_20191228_20201228.npy"), ml[0], ml[1]) > 0.3
@@ -108,7 +113,7 @@ def landcover(arr, fp, ml):
     lc_loop = np.empty((arr.shape[0], 4))
     for i, im in enumerate(arr):
         for l, lc_type in enumerate(np.array([111, 50, 40, 20])):
-            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & coh_mask & perc_mask]))
+            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & coh_mask & perc_mask])) # & reliable_mask]))
             # lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type)])) 
 
     return lc_loop, [types[111], types[50], types[40], types[20]]
