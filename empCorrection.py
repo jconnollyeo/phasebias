@@ -27,7 +27,7 @@ def main():
     fp = f"{wdir}/{frame_ID}/IFG/singlemaster/*"
     data_fns = [file for file in glob.glob(fp, recursive=True)]
     data_fns.sort()
-
+    
     master = data_fns[0].split("/")[-1].split("_")[0]
     loop_dates = [datetime.strptime(date, "%Y%m%d") + timedelta(days=6*d) for d in [0, 1, 2, 3]]
     check = []
@@ -43,12 +43,10 @@ def main():
     date_secondary_str = datetime.strftime(loop_dates[0], "%Y%m%d")
     fp_first = f"{fp[:-2]}/{master}_{date_secondary_str}"
     start = np.where(fp_first == np.asarray(data_fns))[0][0]
-    print (start)
+    # print (start)
     check = np.array(check).all()
 
     if not check: sys.exit(f"Not a 12 day loop.\n {data_fns[start:start+4]}")
-
-    # Read in filepaths for a1 and a2
     
     # If a1 and a2 files cannot be found:
     #     Find a1
@@ -61,10 +59,16 @@ def main():
         phi18 = daisychain(data_fns, start, n=360, m=18, ml=ml)
         a1 = phi12/phi6
         a2 = phi18/phi6
-        np.save("a_variables.npy", np.stack(a1, a2))
+        np.save("a_variables.npy", np.stack((a1, a2)))
 
     # Form G
+    G = np.zeros((3, 3, a1.shape[0], a1.shape[1]))
+    G[0, :1] = a1 - 1
+    G[1, 1:] = a1 - 1
+    G[2, :] = a2 - 1
+
     # Form d
+    
 
     # Perform inversion
     # mhat = np.linalg.inv ( G.transpose() @ G ) @ G.transpose() @ d
@@ -79,10 +83,36 @@ def main():
     
     return None
 
-def checkchain(start_ix, end_ix, fns):
-    dates = np.array([datetime.strptime(f.split("/")[-1].split("_")[-1], "%Y%m%d") for f in fns])
+def makeShortIFG(ix, fns, length):
 
+    
+    
+    return None
 
+def finddifferences(fns):
+    """
+    Used to quickly find the differences between images in a timeseries. 
+    Useful for finding a chain of all 6-day interferograms.
+
+    Args:
+        fns (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    # print (fns[0])
+    fns_0 = np.array([datetime.strptime(f.split("/")[-1].split("_")[-1], "%Y%m%d") for f in fns[:-1]])
+    fns_1 = np.array([datetime.strptime(f.split("/")[-1].split("_")[-1], "%Y%m%d") for f in fns[1:]])
+
+    diff = [str(d.days) for d in (fns_1 - fns_0)]
+
+    with open("differences.txt", "w") as f:
+        f.writelines(diff)
+
+    plt.plot(fns_0, np.asarray(diff, dtype=int))
+    plt.show()
+
+    return None
 
 def daisychain(fns, start_ix, n=360, m=6, ml=[3, 12]):
     
@@ -91,51 +121,48 @@ def daisychain(fns, start_ix, n=360, m=6, ml=[3, 12]):
 
     master = fns[0].split('/')[-1].split('_')[0]
 
-    end_ix = np.where(f"{fns[0][:-18]}/{master}_{end_date}" == np.array(fns))[0][0]
-    print (start_ix, end_ix)
+    try:
+        end_ix = np.where(f"{fns[0][:-18]}/{master}_{end_date}" == np.array(fns))[0][0]
+    except IndexError:
+        sys.exit("Missing data for 360 day interferogram. ")
+
+    # print (start_ix, end_ix)
     
     # Make the 360-day ifg
-    ifg360 = multilook(h5.File(glob.glob(fns[start_ix] + "/*")[0], "r")["Phase"][:]*\
-             h5.File(glob.glob(fns[end_ix] + "/*")[0], "r")["Phase"][:].conjugate(), ml[0], ml[1])
+    ifgn = np.angle(multilook(np.exp(1j*h5.File(glob.glob(fns[start_ix] + "/*")[0], "r")["Phase"][:])*\
+             np.exp(1j*h5.File(glob.glob(fns[end_ix] + "/*")[0], "r")["Phase"][:]).conjugate(), ml[0], ml[1]))
 
     # Make the chain of 6-day ifgs
-    ix_6day = []
-    current = datetime.strptime("20000000", "%Y%m%d")
-    np.arange(0, int(n/m), 1)
-    while current != end_date:
-        
-        
-
-    ifg6_1 = np.array([h5.File(glob.glob(f"{fns[ifg]}/*")) for ifg in ix_6day])
     
+    fns_mday_chain = [glob.glob(fns[start_ix] + "/*")[0]]
+    current = [datetime.strptime(fns[start_ix].split("/")[-1].split("_")[-1], "%Y%m%d")]
 
-    # Isolate the full time series to be used for the loop
-    dates = [datetime.strptime(d.split('_')[-2], '%Y%m%d') for d in fns]
-    print (len(dates))
-    end = np.where(np.array([(d - dates[start]).days for d in dates]) == length)[0]
-    if len(end) == 0:
-        sys.exit("Data does not allow for loop of specified size")
-    else:
-        end = int(end[0])
+    print ("Checking chain")
+    while datetime.strftime(current[-1], "%Y%m%d") != end_date:
+        next = current[-1] + timedelta(days=m)
+        next_str = datetime.strftime(next, "%Y%m%d")
+        next_fn = f"{'/'.join(fns[0].split('/')[:-1])}/{master}_{next_str}/{master}_{next_str}_ph.h5"
 
-    # print (dates[end])
-    # Check that chains of n and m day ifgs can be created
-    delta_chain_check, delta_ixs = check_chain(dates[start:end+1], length=delta)
-    print (f"Checked {delta = }")
+        if len(glob.glob(next_fn)) > 0:
+            fns_mday_chain.append(next_fn)
+            current.append(next)
+        else:
+            print (next_fn)
+            sys.exit("Unable to make chain")
 
-    # Create daisy chain of n-day ifgs (60 days)
-    delta_days = np.arange(0, length+1, delta) # [0, 60, 120, 180, ..., 360]  
-    shape = multilook(h5.File(fns[0])['Phase'][:], ml[0], ml[1]).shape # Fetch the shape of the data
-    delta_ifgs_summed = np.zeros(shape) 
+    fns_mday_chain.sort()
 
-    for p_fn, s_fn in zip(delta_ixs[:-1], delta_ixs[1:]): 
-        print (f"delta, {p_fn = }, {s_fn = }", end='\r')
-        p = h5.File(fns[p_fn])['Phase'][:] 
-        s = h5.File(fns[s_fn])['Phase'][:] 
+    # ifg6_ = np.exp(1j*np.array([h5.File(f, 'r')["Phase"][:] for f in fns_6day_chain]))
+    # ifg6 = ifg6_[:-1]*ifg6_[1:].conjugate()
 
-        delta_ifgs_summed += np.angle(multilook(np.exp(1j*(p-s)), ml[0], ml[1]))
+    ifgm = np.zeros(ifgn.shape, dtype=float)
+    for p_fn, s_fn in zip(fns_mday_chain[:-1], fns_mday_chain[1:]):
+        p = np.exp(1j*h5.File(p_fn, "r")["Phase"][:])
+        s = np.exp(1j*h5.File(s_fn, "r")["Phase"][:])
+
+        ifgm += np.angle(multilook(p*s.conjugate(), ml[0], ml[1]))
     
-    return delta_ifgs_summed
+    return ifgn - ifgm
 
 
 def parse_args():
@@ -156,7 +183,7 @@ def parse_args():
     parser.add_argument("-p",
                         type=str,
                         dest='date',
-                        default="20210103",
+                        default="20201204",
                         help='Date')
     parser.add_argument("-m",
                         type=str,
