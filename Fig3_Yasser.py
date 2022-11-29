@@ -101,7 +101,7 @@ def main():
         plt.matshow(diff)
         plt.colorbar()
     else:
-        shape = multilook(np.array(h5.File(fns[0])['Phase']), ml[0], ml[1]).shape
+        shape = multilook(h5.File(fns[0])['Phase'][:], ml[0], ml[1]).shape
         out = np.empty((6, *shape))
         
         fig = plt.figure(figsize=(12, 15))
@@ -174,19 +174,20 @@ def doLoops(fns, start, length, delta, ml):
 
     # Create daisy chain of n-day ifgs (60 days)
     delta_days = np.arange(0, length+1, delta) # [0, 60, 120, 180, ..., 360]  
-    shape = multilook(np.asarray(h5.File(fns[0])['Phase']), ml[0], ml[1]).shape # Fetch the shape of the data
+    shape = multilook(h5.File(fns[0])['Phase'][:], ml[0], ml[1]).shape # Fetch the shape of the data
     delta_ifgs_summed = np.zeros(shape) 
 
     for p_fn, s_fn in zip(delta_ixs[:-1], delta_ixs[1:]): 
         print (f"delta, {p_fn = }, {s_fn = }", end='\r')
-        p = np.asarray(h5.File(fns[p_fn])['Phase']) 
-        s = np.asarray(h5.File(fns[s_fn])['Phase']) 
+        p = h5.File(fns[p_fn])['Phase'][:] 
+        s = h5.File(fns[s_fn])['Phase'][:] 
 
         delta_ifgs_summed += np.angle(multilook(np.exp(1j*(p-s)), ml[0], ml[1]))
     
     return delta_ifgs_summed
 
 def multilook_mode(arr, ml, preserve_res=True):
+
     start_indices_i = np.arange(arr.shape[0])[::ml[0]]
     start_indices_j = np.arange(arr.shape[1])[::ml[1]]
     
@@ -200,8 +201,9 @@ def multilook_mode(arr, ml, preserve_res=True):
             out[i:i+ml[0], j:j+ml[1]] = m
             p = np.sum(arr[i:i+ml[0], j:j+ml[1]] == m)/\
                         (out[i:i+ml[0], j:j+ml[1]].size)
-            # print (p)
+
             perc[i:i+ml[0], j:j+ml[1]] = p
+
     if preserve_res:
         return out, perc
     else:
@@ -249,9 +251,9 @@ def landcover(arr, fp, ml):
         arr (3d array): 3d array of the loop closure. Along the zeroth axis, each 2d array is of 
                         a different m-day interferogram loop. 
     """
-    types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss", }
+    types = {111:"Forest", 20: "Shrubs", 40:"Cropland", 50:"Urban", 200:"Water/Ice", 30:"Herbacious Veg.", 100:"Moss"}
     lc = h5.File(fp)["Landcover"]
-    lc_conv = convert_landcover(np.array(lc))
+    lc_conv = convert_landcover(lc[:])
     lc_ml, perc = multilook_mode(lc_conv, ml, preserve_res=False)
 
     perc_mask = perc == 1
@@ -260,12 +262,11 @@ def landcover(arr, fp, ml):
 
     mask = multilook(np.load("mean_coherence_20201228_20211217.npy"), ml[0], ml[1]) > 0.3
     
-
     lc_loop = np.empty((arr.shape[0], 4))
     for i, im in enumerate(arr):
         for l, lc_type in enumerate(np.array([111, 50, 40, 20])):
             # print (np.sum(lc_ml == lc_type))
-            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & mask & perc_mask]))
+            lc_loop[i, l] = np.angle(np.mean(np.exp(1j*im)[(lc_ml == lc_type) & mask])) # & perc_mask]))
     
     return lc_loop, [types[111], types[50], types[40], types[20]]
 
