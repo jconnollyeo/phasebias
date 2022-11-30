@@ -53,22 +53,50 @@ def main():
     #     Find a2
     try:
         a1, a2 = np.load("a_variables.npy")
+        print ("a1 and a2 files read.")
     except FileNotFoundError:
+        print ("Creating a1 and a2 files. ")
         phi6 = daisychain(data_fns, start, n=360, m=6, ml=ml)
         phi12 = daisychain(data_fns, start, n=360, m=12, ml=ml)
         phi18 = daisychain(data_fns, start, n=360, m=18, ml=ml)
         a1 = phi12/phi6
         a2 = phi18/phi6
         np.save("a_variables.npy", np.stack((a1, a2)))
+    
+    a1 = np.mean(a1)
+    a2 = np.mean(a2)
 
+    print (a1, a2)
+    
+    a1, a2 = 0.47, 0.31
+    
+    print (a1, a2)
+    
     # Form G
-    G = np.zeros((3, 3, a1.shape[0], a1.shape[1]))
+    print ("Forming G")
+    G = np.zeros((3, 3))
     G[0, :1] = a1 - 1
     G[1, 1:] = a1 - 1
     G[2, :] = a2 - 1
-
-    # Form d
+    print (G)
     
+    # Form d
+
+    print ("Forming d")
+    # Calc misclosure between i and i+2 [0_2 - (0_1 + 1_2)]
+    # Calc misclosure between i+1 and i+3 [1_3 - (1_2 + 2_3)]
+    # Calc misclosure between i and i+3 [0_3 - (0_1 + 1_2 + 2_3)] 
+    closure_0_2 = makeLoop(start, data_fns, short=6, long=12, ml=ml)
+    closure_1_3 = makeLoop(start+1, data_fns, short=6, long=12, ml=ml)
+    closure_0_3 = makeLoop(start, data_fns, short=6, long=18, ml=ml)
+
+    print (closure_0_2.shape)
+    print (closure_1_3)
+    print (closure_0_3)
+
+    # Make array of shape (3, 1, im.shape[0], im.shape[1])
+    # How to apply a matrix mult to each value in another matrix
+    d = np.stack((closure_0_2, closure_1_3, closure_0_3))
 
     # Perform inversion
     # mhat = np.linalg.inv ( G.transpose() @ G ) @ G.transpose() @ d
@@ -83,11 +111,16 @@ def main():
     
     return None
 
-def makeShortIFG(ix, fns, length):
+def makeLoop(ix, fns, short=6, long=12, ml=[3,12]):
 
+    short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
+    long_fns  = [short_fns[0], short_fns[-1]]
+
+    short_ifgs = np.sum(np.array([np.angle(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
+        np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate()) for i in range(len(short_fns)-1)]), axis=0)
+    long_ifgs = np.angle(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate())
     
-    
-    return None
+    return np.angle(np.exp(1j*(multilook(long_ifgs, ml[0], ml[1])-multilook(short_ifgs, ml[0], ml[1]))))
 
 def finddifferences(fns):
     """
@@ -100,6 +133,7 @@ def finddifferences(fns):
     Returns:
         _type_: _description_
     """
+
     # print (fns[0])
     fns_0 = np.array([datetime.strptime(f.split("/")[-1].split("_")[-1], "%Y%m%d") for f in fns[:-1]])
     fns_1 = np.array([datetime.strptime(f.split("/")[-1].split("_")[-1], "%Y%m%d") for f in fns[1:]])
