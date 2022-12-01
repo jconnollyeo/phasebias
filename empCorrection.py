@@ -14,14 +14,16 @@ def main():
     Returns:
         _type_: _description_
     """
-
+    plt.rcParams['image.cmap'] = 'RdYlBu'
+    
     args_dict = parse_args()
     # Read in frame    
     wdir = str(args_dict["wdir"])
     frame_ID = str(args_dict["frame"])
     # Read in date (to be corrected)
-    date = str(args_dict["date"])
-    
+    startdate = str(args_dict["startdate"])
+    corrdate = str(args_dict["corrdate"])
+    date = str(args_dict["corrdate"])
     # Read in multilook factor
     ml = np.asarray(str(args_dict["multilook"]).split(","), dtype=int)
     # Check they exist and read in other interferograms needed for loop
@@ -37,13 +39,14 @@ def main():
         date_secondary_str = datetime.strftime(date_secondary, "%Y%m%d")
         fp_check = f"{fp[:-2]}/{master}_{date_secondary_str}"
         if fp_check in data_fns:
-            check.append(True)
+            check.append(True)  
         else:
             check.append(False)
     
     date_secondary_str = datetime.strftime(loop_dates[0], "%Y%m%d")
     fp_first = f"{fp[:-2]}/{master}_{date_secondary_str}"
     start = np.where(fp_first == np.asarray(data_fns))[0][0]
+    
     # print (start)
     check = np.array(check).all()
 
@@ -65,26 +68,31 @@ def main():
         np.save("a_variables.npy", np.stack((a1, a2)))
     
     shape = a1.shape
-    a1 = np.mean(a1)
-    a2 = np.mean(a2)
 
-    print (a1, a2)
+    a1 = a1.flatten()
+    a2 = a2.flatten()
+    # a1 = np.mean(a1)
+    # a2 = np.mean(a2)
+
+    # print (a1, a2)
     
-    a1, a2 = 0.47, 0.31
+    a1[:] = 0.47
+    a2[:] = 0.31
     
     try:
         m = np.load("mhat.npy")
+        # m = np.load("asdasdamhat.npy") # stupid hack
         print ("m loaded")
     except FileNotFoundError:
-        print (a1, a2)
+        # print (a1, a2)
         
         # Form G
-        print ("Forming G")
-        G = np.zeros((3, 3))
-        G[0, :2] = a1 - 1
-        G[1, 1:] = a1 - 1
-        G[2, :] = a2 - 1
-        print (G)
+        # print ("Forming G")
+        # G = np.zeros((3, 3))
+        # G[0, :2] = a1 - 1
+        # G[1, 1:] = a1 - 1
+        # G[2, :] = a2 - 1
+        # print (G)
         
         # Form d
 
@@ -92,11 +100,11 @@ def main():
         # Calc misclosure between i and i+2 [0_2 - (0_1 + 1_2)]
         # Calc misclosure between i+1 and i+3 [1_3 - (1_2 + 2_3)]
         # Calc misclosure between i and i+3 [0_3 - (0_1 + 1_2 + 2_3)] 
-        closure_0_2 = makeLoop(start, data_fns, short=6, long=12, ml=ml)
-        closure_1_3 = makeLoop(start+1, data_fns, short=6, long=12, ml=ml)
-        closure_0_3 = makeLoop(start, data_fns, short=6, long=18, ml=ml)
+        closure_0_2 = makeLoop(start, data_fns, shape=shape, short=6, long=12, ml=ml)
+        closure_1_3 = makeLoop(start+1, data_fns, shape=shape, short=6, long=12, ml=ml)
+        closure_0_3 = makeLoop(start, data_fns, shape=shape, short=6, long=18, ml=ml)
 
-        print (closure_0_2.shape)
+        print (closure_0_2)
         print (closure_1_3)
         print (closure_0_3)
 
@@ -106,6 +114,11 @@ def main():
         
         m = np.empty((d.T.shape))
         for p_ix, pixel in enumerate(d.T):
+            
+            G = np.zeros((3, 3))
+            G[0, :2] = a1[p_ix] - 1
+            G[1, 1:] = a1[p_ix] - 1
+            G[2, :] = a2[p_ix] - 1
 
             print (f"Pixel {p_ix}/{d.shape[1]} ({p_ix*100/d.shape[1]:.2f}%)", "\r")
             mhat = np.linalg.inv(G.transpose() @ G) @ G.transpose() @ pixel
@@ -115,79 +128,126 @@ def main():
         
         np.save("mhat.npy", m)
         print (m.shape)
+    
+    # ======= Plotting the correction for the individual interferograms of a loop ========
 
     fig, ax = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True)
+    
+    delta01 = np.angle(np.exp(1j*m[:, 0].reshape(shape)))
+    delta12 = np.angle(np.exp(1j*m[:, 1].reshape(shape)))
 
-    p = ax[0].matshow(m[:, 0].reshape(shape), vmin=-np.pi, vmax=np.pi)
-    ax[1].matshow(m[:, 1].reshape(shape), vmin=-np.pi, vmax=np.pi)
-    ax[2].matshow(m[:, 2].reshape(shape), vmin=-np.pi, vmax=np.pi)
+    delta02 = np.angle(np.exp(1j*a1.reshape(shape)*(delta01+delta12)))
+
+    p = ax[0].matshow(delta01, vmin=-np.pi, vmax=np.pi)
+    ax[1].matshow(delta12, vmin=-np.pi, vmax=np.pi)
+    ax[2].matshow(delta02, vmin=-np.pi, vmax=np.pi)
     
     plt.colorbar(p, ax=ax[:])
     ax[0].set_title("$\delta_{i,i+1}$")
-    ax[1].set_title("$\delta_{i,i+2}$")
-    ax[2].set_title("$\delta_{i,i+3}$")
-
-    delta01 = m[:, 0].reshape(shape)
-    delta02 = m[:, 1].reshape(shape)
-    delta03 = m[:, 2].reshape(shape)
-
-    delta12 = (delta02/a1) - delta01
+    ax[1].set_title("$\delta_{i+1,i+2}$")
+    ax[2].set_title("$\delta_{i,i+2}$")
 
     shortcorr = np.stack((delta01, delta12))
     
-    loop = makeLoop(start, data_fns, short=6, long=12, ml=ml)
-    loopc = makeCorrectedLoop(start, data_fns, shortcorr=shortcorr, longcorr=delta03, short=6, long=12, ml=ml)
+    loop = makeLoop(start, data_fns, shape=shape, short=6, long=12, ml=ml)
+    loopc = makeCorrectedLoop(start, data_fns, shape=shape, shortcorr=shortcorr, longcorr=delta02, short=6, long=12, ml=ml)
 
     fig, ax = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True)
-
+    print (loopc.max(), loopc.min())
     p = ax[0].matshow(loop, vmin=-np.pi, vmax=np.pi)
+    # p = ax[0].matshow(np.isnan(loop), vmin=0, vmax=1)
     ax[0].set_title("12, 6, 6 loop")
 
     ax[1].matshow(loopc, vmin=-np.pi, vmax=np.pi)
+    # ax[1].matshow(np.isnan(loopc), vmin=0, vmax=1)
     ax[1].set_title("12, 6, 6, corrected loop")
 
     ax[2].matshow(loopc-loop, vmin=-np.pi, vmax=np.pi)
     ax[2].set_title("Residual")
 
-    plt.colorbar(p, ax=ax[:])
+    # plt.colorbar(p, ax=ax[:])
 
-    # Correct interferogram
-    # Make fig:
-    #     Before, after, residual
-    # Make fig:
-    #     a1, a2
-
-    # return corrected, residual
     plt.show()
 
-def makeLoop(ix, fns, short=6, long=12, ml=[3,12]):
+# def makeLoop(ix, fns, short=6, long=12, ml=[3,12]):
 
-    short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
-    long_fns  = [short_fns[0], short_fns[-1]]
+#     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
+#     long_fns  = [short_fns[0], short_fns[-1]]
+#     for s in short_fns:
+#         print (s)
 
-    short_ifgs = np.sum(np.array([np.angle(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
-        np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate()) for i in range(len(short_fns)-1)]), axis=0)
-    long_ifgs = np.angle(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate())
+#     print ("")
+#     print (long_fns)
+
+#     short_ifgs = np.sum(np.array([np.angle(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
+#         np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate()) for i in range(len(short_fns)-1)]), axis=0)
+#     long_ifgs = np.angle(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate())
     
-    return np.angle(np.exp(1j*(multilook(long_ifgs, ml[0], ml[1])-multilook(short_ifgs, ml[0], ml[1]))))
+#     return np.angle(np.exp(1j*(multilook(long_ifgs, ml[0], ml[1])-multilook(short_ifgs, ml[0], ml[1]))))
 
-def makeCorrectedLoop(ix, fns, shortcorr, longcorr, short=6, long=12, ml=[3,12]):
-
-    print (shortcorr.shape)
-    print (longcorr.shape)
+def makeLoop(ix, fns, shape, short=6, long=12, ml=[3, 12]):
 
     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
     long_fns  = [short_fns[0], short_fns[-1]]
+    
+    short_ifgs = np.full((len(short_fns)-1, *shape), fill_value=np.nan, dtype=np.complex64)
+    i = 0
+    for ifgfn1, ifgfn2 in zip(short_fns[:-1], short_fns[1:]):
+        ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:])
+        ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:])
 
-    short_ifgs = np.array([multilook(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
-        np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate(), ml[0], ml[1]) for i in range(len(short_fns)-1)])
+        ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
+        short_ifgs[i] = ifg12
+        i += 1
+        
+    ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:])
+    ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:])
+    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
+    
+    closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate()
 
-    print (short_ifgs.shape)
-    short_ifgs_corr = np.sum(np.angle(short_ifgs*shortcorr.conjugate()), axis=0)
+    return np.angle(closure)
 
-    long_ifgs_corr = np.angle(multilook(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate(), ml[0], ml[1])*longcorr.conjugate())
 
-    return np.angle(np.exp(1j*(long_ifgs_corr-short_ifgs_corr)))
+def makeCorrectedLoop(ix, fns, shortcorr, longcorr, shape, short=6, long=12, ml=[3, 12]):
+
+    short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
+    long_fns  = [short_fns[0], short_fns[-1]]
+    
+    short_ifgs = np.full((len(short_fns)-1, *shape), fill_value=np.nan, dtype=np.complex64)
+    i = 0
+    for ifgfn1, ifgfn2 in zip(short_fns[:-1], short_fns[1:]):
+        ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:])
+        ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:])
+
+        ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
+        short_ifgs[i] = ifg12
+        
+    ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:])
+    ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:])
+    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
+
+    closure = (long_ifg*longcorr.conjugate())*np.prod(short_ifgs*np.exp(1j*shortcorr).conjugate(), axis=0, dtype=np.complex64).conjugate()
+
+    return np.angle(closure)
+
+# def makeCorrectedLoop(ix, fns, shortcorr, longcorr, short=6, long=12, ml=[3,12]):
+
+#     print (shortcorr.shape)
+#     print (longcorr.shape)
+
+#     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
+#     long_fns  = [short_fns[0], short_fns[-1]]
+
+#     short_ifgs = np.array([multilook(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
+#         np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate(), ml[0], ml[1]) for i in range(len(short_fns)-1)])
+
+#     print (short_ifgs.shape)
+#     short_ifgs_corr = np.sum(np.angle(short_ifgs*shortcorr.conjugate()), axis=0)
+
+#     long_ifgs_corr = np.angle(multilook(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate(), ml[0], ml[1])*longcorr.conjugate())
+
+#     return np.angle(np.exp(1j*(long_ifgs_corr-short_ifgs_corr)))
 
 def finddifferences(fns):
     """
