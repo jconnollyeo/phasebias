@@ -21,6 +21,7 @@ def main():
     frame_ID = str(args_dict["frame"])
     # Read in date (to be corrected)
     date = str(args_dict["date"])
+    
     # Read in multilook factor
     ml = np.asarray(str(args_dict["multilook"]).split(","), dtype=int)
     # Check they exist and read in other interferograms needed for loop
@@ -63,6 +64,7 @@ def main():
         a2 = phi18/phi6
         np.save("a_variables.npy", np.stack((a1, a2)))
     
+    shape = a1.shape
     a1 = np.mean(a1)
     a2 = np.mean(a2)
 
@@ -70,37 +72,85 @@ def main():
     
     a1, a2 = 0.47, 0.31
     
-    print (a1, a2)
+    try:
+        m = np.load("mhat.npy")
+        print ("m loaded")
+    except FileNotFoundError:
+        print (a1, a2)
+        
+        # Form G
+        print ("Forming G")
+        G = np.zeros((3, 3))
+        G[0, :2] = a1 - 1
+        G[1, 1:] = a1 - 1
+        G[2, :] = a2 - 1
+        print (G)
+        
+        # Form d
+
+        print ("Forming d")
+        # Calc misclosure between i and i+2 [0_2 - (0_1 + 1_2)]
+        # Calc misclosure between i+1 and i+3 [1_3 - (1_2 + 2_3)]
+        # Calc misclosure between i and i+3 [0_3 - (0_1 + 1_2 + 2_3)] 
+        closure_0_2 = makeLoop(start, data_fns, short=6, long=12, ml=ml)
+        closure_1_3 = makeLoop(start+1, data_fns, short=6, long=12, ml=ml)
+        closure_0_3 = makeLoop(start, data_fns, short=6, long=18, ml=ml)
+
+        print (closure_0_2.shape)
+        print (closure_1_3)
+        print (closure_0_3)
+
+        # Make array of shape (3, 1, im.shape[0], im.shape[1])
+        # How to apply a matrix mult to each value in another matrix
+        d = np.stack((closure_0_2.flatten(), closure_1_3.flatten(), closure_0_3.flatten()))
+        
+        m = np.empty((d.T.shape))
+        for p_ix, pixel in enumerate(d.T):
+
+            print (f"Pixel {p_ix}/{d.shape[1]} ({p_ix*100/d.shape[1]:.2f}%)", "\r")
+            mhat = np.linalg.inv(G.transpose() @ G) @ G.transpose() @ pixel
+            m[p_ix] = mhat
+        # Perform inversion
+        # mhat = np.linalg.inv ( G.transpose() @ G ) @ G.transpose() @ d
+        
+        np.save("mhat.npy", m)
+        print (m.shape)
+
+    fig, ax = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True)
+
+    p = ax[0].matshow(m[:, 0].reshape(shape), vmin=-np.pi, vmax=np.pi)
+    ax[1].matshow(m[:, 1].reshape(shape), vmin=-np.pi, vmax=np.pi)
+    ax[2].matshow(m[:, 2].reshape(shape), vmin=-np.pi, vmax=np.pi)
     
-    # Form G
-    print ("Forming G")
-    G = np.zeros((3, 3))
-    G[0, :1] = a1 - 1
-    G[1, 1:] = a1 - 1
-    G[2, :] = a2 - 1
-    print (G)
+    plt.colorbar(p, ax=ax[:])
+    ax[0].set_title("$\delta_{i,i+1}$")
+    ax[1].set_title("$\delta_{i,i+2}$")
+    ax[2].set_title("$\delta_{i,i+3}$")
+
+    delta01 = m[:, 0].reshape(shape)
+    delta02 = m[:, 1].reshape(shape)
+    delta03 = m[:, 2].reshape(shape)
+
+    delta12 = (delta02/a1) - delta01
+
+    shortcorr = np.stack((delta01, delta12))
     
-    # Form d
+    loop = makeLoop(start, data_fns, short=6, long=12, ml=ml)
+    loopc = makeCorrectedLoop(start, data_fns, shortcorr=shortcorr, longcorr=delta03, short=6, long=12, ml=ml)
 
-    print ("Forming d")
-    # Calc misclosure between i and i+2 [0_2 - (0_1 + 1_2)]
-    # Calc misclosure between i+1 and i+3 [1_3 - (1_2 + 2_3)]
-    # Calc misclosure between i and i+3 [0_3 - (0_1 + 1_2 + 2_3)] 
-    closure_0_2 = makeLoop(start, data_fns, short=6, long=12, ml=ml)
-    closure_1_3 = makeLoop(start+1, data_fns, short=6, long=12, ml=ml)
-    closure_0_3 = makeLoop(start, data_fns, short=6, long=18, ml=ml)
+    fig, ax = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True)
 
-    print (closure_0_2.shape)
-    print (closure_1_3)
-    print (closure_0_3)
+    p = ax[0].matshow(loop, vmin=-np.pi, vmax=np.pi)
+    ax[0].set_title("12, 6, 6 loop")
 
-    # Make array of shape (3, 1, im.shape[0], im.shape[1])
-    # How to apply a matrix mult to each value in another matrix
-    d = np.stack((closure_0_2, closure_1_3, closure_0_3))
+    ax[1].matshow(loopc, vmin=-np.pi, vmax=np.pi)
+    ax[1].set_title("12, 6, 6, corrected loop")
 
-    # Perform inversion
-    # mhat = np.linalg.inv ( G.transpose() @ G ) @ G.transpose() @ d
-    
+    ax[2].matshow(loopc-loop, vmin=-np.pi, vmax=np.pi)
+    ax[2].set_title("Residual")
+
+    plt.colorbar(p, ax=ax[:])
+
     # Correct interferogram
     # Make fig:
     #     Before, after, residual
@@ -108,8 +158,7 @@ def main():
     #     a1, a2
 
     # return corrected, residual
-    
-    return None
+    plt.show()
 
 def makeLoop(ix, fns, short=6, long=12, ml=[3,12]):
 
@@ -121,6 +170,24 @@ def makeLoop(ix, fns, short=6, long=12, ml=[3,12]):
     long_ifgs = np.angle(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate())
     
     return np.angle(np.exp(1j*(multilook(long_ifgs, ml[0], ml[1])-multilook(short_ifgs, ml[0], ml[1]))))
+
+def makeCorrectedLoop(ix, fns, shortcorr, longcorr, short=6, long=12, ml=[3,12]):
+
+    print (shortcorr.shape)
+    print (longcorr.shape)
+
+    short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
+    long_fns  = [short_fns[0], short_fns[-1]]
+
+    short_ifgs = np.array([multilook(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
+        np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate(), ml[0], ml[1]) for i in range(len(short_fns)-1)])
+
+    print (short_ifgs.shape)
+    short_ifgs_corr = np.sum(np.angle(short_ifgs*shortcorr.conjugate()), axis=0)
+
+    long_ifgs_corr = np.angle(multilook(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate(), ml[0], ml[1])*longcorr.conjugate())
+
+    return np.angle(np.exp(1j*(long_ifgs_corr-short_ifgs_corr)))
 
 def finddifferences(fns):
     """
@@ -214,11 +281,16 @@ def parse_args():
                         dest='frame',
                         default="jacob2",
                         help='Frame ID')
+    parser.add_argument("-a",
+                        type=str,
+                        dest='startdate',
+                        default="20201204",
+                        help='Start date of 360 day timeseries for a1 and a2. ')
     parser.add_argument("-p",
                         type=str,
-                        dest='date',
-                        default="20201204",
-                        help='Date')
+                        dest='corrdate',
+                        default="20210515",
+                        help="Date of ifg to be corrected")
     parser.add_argument("-m",
                         type=str,
                         dest='multilook',
