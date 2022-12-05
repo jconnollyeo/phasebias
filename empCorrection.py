@@ -26,6 +26,10 @@ def main():
     date = str(args_dict["corrdate"])
     # Read in multilook factor
     ml = np.asarray(str(args_dict["multilook"]).split(","), dtype=int)
+
+    plot = False
+    save = True
+
     # Check they exist and read in other interferograms needed for loop
     fp = f"{wdir}/{frame_ID}/IFG/singlemaster/*"
     data_fns = [file for file in glob.glob(fp, recursive=True)]
@@ -76,25 +80,14 @@ def main():
 
     # print (a1, a2)
     
-    a1[:] = 0.47
-    a2[:] = 0.31
+    a1[:] = 0.47 # From literature
+    a2[:] = 0.31 # From literature
     
     try:
-        m = np.load("mhat.npy")
-        # m = np.load("asdasdamhat.npy") # stupid hack
+        # m = np.load("mhatnp.angle(.)npy")
+        m = np.load("asdasdamhat.npy") # stupid hack
         print ("m loaded")
     except FileNotFoundError:
-        # print (a1, a2)
-        
-        # Form G
-        # print ("Forming G")
-        # G = np.zeros((3, 3))
-        # G[0, :2] = a1 - 1
-        # G[1, 1:] = a1 - 1
-        # G[2, :] = a2 - 1
-        # print (G)
-        
-        # Form d
 
         print ("Forming d")
         # Calc misclosure between i and i+2 [0_2 - (0_1 + 1_2)]
@@ -104,9 +97,16 @@ def main():
         closure_1_3 = makeLoop(start+1, data_fns, shape=shape, short=6, long=12, ml=ml)
         closure_0_3 = makeLoop(start, data_fns, shape=shape, short=6, long=18, ml=ml)
 
-        print (closure_0_2)
-        print (closure_1_3)
-        print (closure_0_3)
+        # fig, ax = plt.subplots(nrows=2, ncols=3)
+        # p = ax[0, 0].matshow(np.angle(closure_0_2), vmin=-np.pi, vmax=np.pi)
+        # ax[0, 1].matshow(np.angle(closure_1_3), vmin=-np.pi, vmax=np.pi)
+        # ax[0, 2].matshow(np.angle(closure_0_3), vmin=-np.pi, vmax=np.pi)
+
+        # plt.colorbar(p, ax=ax[0, :])
+
+        # ax[1, 0].hist(np.angle(closure_0_2).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+        # ax[1, 1].hist(np.angle(closure_1_3).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+        # ax[1, 2].hist(np.angle(closure_0_3).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
 
         # Make array of shape (3, 1, im.shape[0], im.shape[1])
         # How to apply a matrix mult to each value in another matrix
@@ -123,67 +123,87 @@ def main():
             print (f"Pixel {p_ix}/{d.shape[1]} ({p_ix*100/d.shape[1]:.2f}%)", "\r")
             mhat = np.linalg.inv(G.transpose() @ G) @ G.transpose() @ pixel
             m[p_ix] = mhat
-        # Perform inversion
-        # mhat = np.linalg.inv ( G.transpose() @ G ) @ G.transpose() @ d
-        
+
         np.save("mhat.npy", m)
         print (m.shape)
     
     # ======= Plotting the correction for the individual interferograms of a loop ========
 
-    fig, ax = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True)
-    
-    delta01 = np.angle(np.exp(1j*m[:, 0].reshape(shape)))
-    delta12 = np.angle(np.exp(1j*m[:, 1].reshape(shape)))
+    # print (f"{m[:, 0].min() = }, {m[:, 0].max() = }")
+    # print (f"{m[:, 1].min() = }, {m[:, 1].max() = }")
+    # print (f"{m[:, 2].min() = }, {m[:, 2].max() = }")
 
-    delta02 = np.angle(np.exp(1j*a1.reshape(shape)*(delta01+delta12)))
-
-    p = ax[0].matshow(delta01, vmin=-np.pi, vmax=np.pi)
-    ax[1].matshow(delta12, vmin=-np.pi, vmax=np.pi)
-    ax[2].matshow(delta02, vmin=-np.pi, vmax=np.pi)
+    fig, ax = plt.subplots(nrows=2, ncols=3)
     
-    plt.colorbar(p, ax=ax[:])
-    ax[0].set_title("$\delta_{i,i+1}$")
-    ax[1].set_title("$\delta_{i+1,i+2}$")
-    ax[2].set_title("$\delta_{i,i+2}$")
+    delta01 = m[:, 0].reshape(shape) # Radians
+    delta12 = m[:, 1].reshape(shape)
+
+    delta02 = (a1*(m[:, 0]+m[:, 1])).reshape(shape)
+
+    # p = ax[0, 0].matshow(delta01, vmin=-np.pi, vmax=np.pi)
+    # ax[0, 1].matshow(delta12, vmin=-np.pi, vmax=np.pi)
+    # ax[0, 2].matshow(delta02, vmin=-np.pi, vmax=np.pi)
+    
+    # plt.colorbar(p, ax=ax[:])
+    # ax[0, 0].set_title("$\delta_{i,i+1}$")
+    # ax[0, 1].set_title("$\delta_{i+1,i+2}$")
+    # ax[0, 2].set_title("$\delta_{i,i+2}$")
+
+    # ax[1, 0].hist(m[:, 0], bins=np.linspace(-np.pi, np.pi, 30))
+    # ax[1, 1].hist(m[:, 1], bins=np.linspace(-np.pi, np.pi, 30))
+    # ax[1, 2].hist(m[:, 2], bins=np.linspace(-np.pi, np.pi, 30))
+
+    # ax[1, 0].hist(delta01.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+    # ax[1, 1].hist(delta12.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+    # ax[1, 2].hist(delta02.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
 
     shortcorr = np.stack((delta01, delta12))
     
     loop = makeLoop(start, data_fns, shape=shape, short=6, long=12, ml=ml)
-    loopc = makeCorrectedLoop(start, data_fns, shape=shape, shortcorr=shortcorr, longcorr=delta02, short=6, long=12, ml=ml)
 
-    fig, ax = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True)
-    print (loopc.max(), loopc.min())
-    p = ax[0].matshow(loop, vmin=-np.pi, vmax=np.pi)
-    # p = ax[0].matshow(np.isnan(loop), vmin=0, vmax=1)
-    ax[0].set_title("12, 6, 6 loop")
+    closure_corr = np.exp(1j*(delta02 - (delta01 + delta12)))
 
-    ax[1].matshow(loopc, vmin=-np.pi, vmax=np.pi)
-    # ax[1].matshow(np.isnan(loopc), vmin=0, vmax=1)
-    ax[1].set_title("12, 6, 6, corrected loop")
+    loopc = np.angle(loop * closure_corr.conjugate())
 
-    ax[2].matshow(loopc-loop, vmin=-np.pi, vmax=np.pi)
-    ax[2].set_title("Residual")
+    loop = np.angle(loop)
 
-    # plt.colorbar(p, ax=ax[:])
+    if plot:
+        plot_results(loop, loopc)
+    else:
+        pass
+
+    if save:
+        save_corrected(loopc, date)
+    else:
+        pass
+
+
+def plot_results(loop, loopc):
+    fig, ax = plt.subplots(nrows=2, ncols=3)
+    
+    # print (loopc.max(), loopc.min())
+
+    p = ax[0, 0].matshow(loop, vmin=-np.pi, vmax=np.pi)
+    ax[1, 0].hist(loop.flatten(), bins=np.linspace(-np.pi, np.pi, 50))
+    ax[0, 0].set_title("12, 6, 6 loop")
+
+    ax[0, 1].matshow(loopc, vmin=-np.pi, vmax=np.pi)
+    ax[1, 1].hist(loopc.flatten(), bins=np.linspace(-np.pi, np.pi, 50))
+    ax[0, 1].set_title("12, 6, 6, corrected loop")
+
+    ax[0, 2].matshow(loopc-loop, vmin=-np.pi, vmax=np.pi)
+    ax[1, 2].hist((loopc-loop).flatten(), bins=np.linspace(-np.pi, np.pi, 50))
+    ax[0, 2].set_title("Residual")
+
+    plt.colorbar(p, ax=ax[:])
 
     plt.show()
 
-# def makeLoop(ix, fns, short=6, long=12, ml=[3,12]):
-
-#     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
-#     long_fns  = [short_fns[0], short_fns[-1]]
-#     for s in short_fns:
-#         print (s)
-
-#     print ("")
-#     print (long_fns)
-
-#     short_ifgs = np.sum(np.array([np.angle(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
-#         np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate()) for i in range(len(short_fns)-1)]), axis=0)
-#     long_ifgs = np.angle(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate())
+def save_corrected(loop, loopc, date_str):
     
-#     return np.angle(np.exp(1j*(multilook(long_ifgs, ml[0], ml[1])-multilook(short_ifgs, ml[0], ml[1]))))
+    np.save(f"12_6_6/corrected/{date_str}_corrected_6-6-12.npy", np.stack((loop, loopc)))
+
+    return True
 
 def makeLoop(ix, fns, shape, short=6, long=12, ml=[3, 12]):
 
@@ -203,13 +223,14 @@ def makeLoop(ix, fns, shape, short=6, long=12, ml=[3, 12]):
     ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:])
     ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:])
     long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
-    
+
     closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate()
 
-    return np.angle(closure)
+    return closure
 
 
 def makeCorrectedLoop(ix, fns, shortcorr, longcorr, shape, short=6, long=12, ml=[3, 12]):
+    # Something funky is happening here.....
 
     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
     long_fns  = [short_fns[0], short_fns[-1]]
@@ -222,32 +243,18 @@ def makeCorrectedLoop(ix, fns, shortcorr, longcorr, shape, short=6, long=12, ml=
 
         ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
         short_ifgs[i] = ifg12
+        i+=1
         
     ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:])
     ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:])
     long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
 
-    closure = (long_ifg*longcorr.conjugate())*np.prod(short_ifgs*np.exp(1j*shortcorr).conjugate(), axis=0, dtype=np.complex64).conjugate()
+    closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate()
+    closure_corr = np.exp(1j*longcorr)*np.prod(np.exp(1j*shortcorr), axis=0, dtype=np.complex64)
+    
+    # closure = (long_ifg*longcorr.conjugate())*np.prod(short_ifgs*np.exp(1j*shortcorr).conjugate(), axis=0, dtype=np.complex64).conjugate()
 
-    return np.angle(closure)
-
-# def makeCorrectedLoop(ix, fns, shortcorr, longcorr, short=6, long=12, ml=[3,12]):
-
-#     print (shortcorr.shape)
-#     print (longcorr.shape)
-
-#     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
-#     long_fns  = [short_fns[0], short_fns[-1]]
-
-#     short_ifgs = np.array([multilook(np.exp(1j*h5.File(short_fns[i])["Phase"][:])*\
-#         np.exp(1j*h5.File(short_fns[i+1])["Phase"][:]).conjugate(), ml[0], ml[1]) for i in range(len(short_fns)-1)])
-
-#     print (short_ifgs.shape)
-#     short_ifgs_corr = np.sum(np.angle(short_ifgs*shortcorr.conjugate()), axis=0)
-
-#     long_ifgs_corr = np.angle(multilook(np.exp(1j*h5.File(long_fns[0])["Phase"][:])*np.exp(1j*h5.File(long_fns[1])["Phase"][:]).conjugate(), ml[0], ml[1])*longcorr.conjugate())
-
-#     return np.angle(np.exp(1j*(long_ifgs_corr-short_ifgs_corr)))
+    return np.angle(closure*closure_corr)
 
 def finddifferences(fns):
     """
@@ -344,8 +351,8 @@ def parse_args():
     parser.add_argument("-a",
                         type=str,
                         dest='startdate',
-                        default="20201204",
-                        help='Start date of 360 day timeseries for a1 and a2. ')
+                        default="20210421",
+                        help='Start date of 360 day timeseries for a1 and a2. 20201204')
     parser.add_argument("-p",
                         type=str,
                         dest='corrdate',
