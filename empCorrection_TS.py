@@ -23,6 +23,9 @@ def main():
     startdate = str(args_dict["startdate"])
     enddate = str(args_dict["enddate"])
     ml = np.asarray(str(args_dict["multilook"]).split(","), dtype=int)
+    
+
+
 
     plot = True
     save = True
@@ -39,21 +42,40 @@ def main():
     loop12, loop18 = define_loops(ifg_filenames)
     
     shape = multilook(h5.File(ifg_filenames[0])["Phase"][:], ml[0], ml[1]).shape
+
+    # ===============================================================================
+    # print ("Test Start")
+    # print (loop12[0])
+    # long_ifg, short_ifgs = makeLoop(loop12[0], shape=shape)
+
+    # closure = long_ifg * np.prod(short_ifgs, axis=0).conjugate()
+    # print (closure)
+    # fig, ax = plt.subplots(3)
+    # ax[0].matshow(np.angle(closure), vmin=-np.pi, vmax=np.pi)
+    # ax[1].hist(np.angle(closure).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+    # ax[2].scatter(closure.real, closure.imag)
+    # plt.show()
+
+    # print ("Test End")
+    # ===============================================================================
+
     mask = coherence_mask(dates_between, f"{wdir}/{frame_ID}", ml, shape)
     mask[:] = True
+
     # =================================== Create the d matrix and make the loops ===================================
+
     d = np.empty((len(loop12) + len(loop18), np.product(shape)), dtype=np.complex64)
 
     for i, loop_fns in enumerate(loop12 + loop18):
 
         long_ifg, short_ifgs = makeLoop(loop_fns, mask=mask, shape=shape)
-
+        print (long_ifg.flatten()[0].dtype, short_ifgs[0][0][0].dtype)
         closure = long_ifg * np.prod(short_ifgs, axis=0).conjugate()
         
         d[i] = closure.flatten()
     
     d = np.angle(d)   
-    print (d) 
+    print (d)
     
     # ======================================= Create and populate the G matrix =====================================
     G12 = np.zeros((len(loop12), len(ifg_filenames)-1))
@@ -70,9 +92,8 @@ def main():
     # ============================================= Perform the inversion ==========================================
     mhat = np.linalg.lstsq(G, d, rcond=None)
     # mhat[0] (4, 833000)
-
-
     
+
     # ============================================ Plot and save the data ==========================================
     if save:
         np.save(f"Correction_{startdate}_{enddate}.npy", mhat[0])
@@ -81,16 +102,19 @@ def main():
         for i, loop_fns in enumerate(loop12):
             print (i)
             long_ifg, short_ifgs = makeLoop(loop_fns, mask=mask, shape=shape)
-            loop = long_ifg * np.prod(short_ifgs, axis=0).conjugate()
+            loop = np.angle(np.exp(1j*(np.angle(long_ifg) - np.sum(np.angle(short_ifgs), axis=0))))
+
+            # loop = long_ifg * np.prod(short_ifgs, axis=0).conjugate()
             # plt.matshow(np.angle(loop))
             corrections = np.angle(np.exp(1j * ((a1-1)*(mhat[0][i] + mhat[0][i+1])) )).reshape(shape)
             # plt.matshow(corrections)
-            ax = plot_results_map(np.angle(loop), corrections)
+            ax = plot_results_map(np.angle(loop), corrections, title=str(i))
 
         plt.show()
         # plot_results_timeseries()
 
-def plot_results_map(loop, correction):
+
+def plot_results_map(loop, correction, title=None):
 
     fig, ax = plt.subplots(nrows=2, ncols=3)
 
@@ -103,6 +127,10 @@ def plot_results_map(loop, correction):
     ax[1, 2].hist(correction.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
     
     plt.colorbar(p, ax=ax[:])
+    if isinstance(title, type(None)):
+        plt.suptitle("plot_results_map")
+    else:
+        plt.suptitle(title)
     return ax
     
 
@@ -178,7 +206,8 @@ def makeLoop(filenames, shape, ml=[3, 12], mask=None):
         short_ifgs (np.array): 3d array of ifgs spanning 6 day steps.
     """
 
-    short_ifgs = np.empty((3, *shape), dtype=np.complex64)
+    short_ifgs = np.zeros((3, *shape), dtype=np.complex64)
+
     i=0
     for ifgfn1, ifgfn2 in zip(filenames[:-1], filenames[1:]):
 
@@ -186,6 +215,8 @@ def makeLoop(filenames, shape, ml=[3, 12], mask=None):
         ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:]) # Load in the second ifg
 
         ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create an ifg between them and multilook
+        ifg12 = multilook(np.angle(ifg1*ifg2.conjugate()), ml[0], ml[1]) # Create an ifg between them and multilook
+
 
         short_ifgs[i] = ifg12 # Put it in the short_ifgs array
 
@@ -194,6 +225,8 @@ def makeLoop(filenames, shape, ml=[3, 12], mask=None):
     ifg1 = np.exp(1j*h5.File(filenames[0], "r")["Phase"][:]) # Load the first ifg of the ifg spanning the whole time
     ifg2 = np.exp(1j*h5.File(filenames[-1], "r")["Phase"][:]) # Load in the second ifg of the ifg spanning the whole time
     long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create the ifg between them and multilook
+    long_ifg = multilook(np.angle(ifg1*ifg2.conjugate()), ml[0], ml[1]) # Create the ifg between them and multilook
+
 
     # closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate() # Compute the closure phase
 
