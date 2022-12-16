@@ -64,19 +64,24 @@ def main():
 
     # =================================== Create the d matrix and make the loops ===================================
 
-    d = np.empty((len(loop12) + len(loop18), np.product(shape)), dtype=np.complex64)
+    d = np.zeros((len(loop12) + len(loop18), np.product(shape)))
+    print (f"{d.shape = }")
 
     for i, loop_fns in enumerate(loop12 + loop18):
-
+        print (i)
         long_ifg, short_ifgs = makeLoop(loop_fns, mask=mask, shape=shape)
-        print (long_ifg.flatten()[0].dtype, short_ifgs[0][0][0].dtype)
-        closure = long_ifg * np.prod(short_ifgs, axis=0).conjugate()
-        
-        d[i] = closure.flatten()
-    
-    d = np.angle(d)   
+
+        # closure = long_ifg * np.prod(short_ifgs, axis=0).conjugate() # SOMETHING HAPPENING HERE
+        closure = np.exp(1j* (np.angle(long_ifg) - (np.sum(np.angle(short_ifgs), axis=0)) ) )
+        # print (np.angle(closure))
+        # plt.matshow(np.angle(closure), vmin=-np.pi, vmax=np.pi)
+        # plt.show()
+        d[i] = np.angle(closure).flatten()
+
+    print ("Printing d")
     print (d)
-    
+    print ("\n")
+
     # ======================================= Create and populate the G matrix =====================================
     G12 = np.zeros((len(loop12), len(ifg_filenames)-1))
     G18 = np.zeros((len(loop18), len(ifg_filenames)-1))
@@ -88,11 +93,11 @@ def main():
         G18[i, i:i+3] = a2 - 1
 
     G = np.concatenate((G12, G18), axis=0)
-    plt.imshow(G)
+    
     # ============================================= Perform the inversion ==========================================
+
     mhat = np.linalg.lstsq(G, d, rcond=None)
     # mhat[0] (4, 833000)
-    
 
     # ============================================ Plot and save the data ==========================================
     if save:
@@ -102,10 +107,11 @@ def main():
         for i, loop_fns in enumerate(loop12):
             print (i)
             long_ifg, short_ifgs = makeLoop(loop_fns, mask=mask, shape=shape)
-            loop = np.angle(np.exp(1j*(np.angle(long_ifg) - np.sum(np.angle(short_ifgs), axis=0))))
+            # loop = np.angle(np.exp(1j*(np.angle(long_ifg) - np.sum(np.angle(short_ifgs), axis=0))))
 
             # loop = long_ifg * np.prod(short_ifgs, axis=0).conjugate()
-            # plt.matshow(np.angle(loop))
+            loop = np.exp(1j* (np.angle(long_ifg) - (np.sum(np.angle(short_ifgs), axis=0)) ) )
+
             corrections = np.angle(np.exp(1j * ((a1-1)*(mhat[0][i] + mhat[0][i+1])) )).reshape(shape)
             # plt.matshow(corrections)
             ax = plot_results_map(np.angle(loop), corrections, title=str(i))
@@ -209,26 +215,21 @@ def makeLoop(filenames, shape, ml=[3, 12], mask=None):
     short_ifgs = np.zeros((3, *shape), dtype=np.complex64)
 
     i=0
+
     for ifgfn1, ifgfn2 in zip(filenames[:-1], filenames[1:]):
 
         ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:]) # Load in the first ifg
         ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:]) # Load in the second ifg
 
         ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create an ifg between them and multilook
-        ifg12 = multilook(np.angle(ifg1*ifg2.conjugate()), ml[0], ml[1]) # Create an ifg between them and multilook
-
-
+        
         short_ifgs[i] = ifg12 # Put it in the short_ifgs array
 
         i += 1 # Move to the next position in the short_ifgs array
-        
+
     ifg1 = np.exp(1j*h5.File(filenames[0], "r")["Phase"][:]) # Load the first ifg of the ifg spanning the whole time
     ifg2 = np.exp(1j*h5.File(filenames[-1], "r")["Phase"][:]) # Load in the second ifg of the ifg spanning the whole time
-    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create the ifg between them and multilook
-    long_ifg = multilook(np.angle(ifg1*ifg2.conjugate()), ml[0], ml[1]) # Create the ifg between them and multilook
-
-
-    # closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate() # Compute the closure phase
+    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]).astype(np.complex64) # Create the ifg between them and multilook
 
     if isinstance(mask, type(None)):
         pass
