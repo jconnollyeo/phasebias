@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
@@ -24,11 +25,12 @@ def main():
     startdate = str(args_dict["startdate"])
     corrdate = str(args_dict["corrdate"])
     date = str(args_dict["corrdate"])
+    print (date)
     # Read in multilook factor
     ml = np.asarray(str(args_dict["multilook"]).split(","), dtype=int)
 
-    plot = False
-    save = True
+    plot = True
+    save = False
 
     # Check they exist and read in other interferograms needed for loop
     fp = f"{wdir}/{frame_ID}/IFG/singlemaster/*"
@@ -51,18 +53,18 @@ def main():
     fp_first = f"{fp[:-2]}/{master}_{date_secondary_str}"
     start = np.where(fp_first == np.asarray(data_fns))[0][0]
     
-    # print (start)
     check = np.array(check).all()
 
-    if not check: sys.exit(f"Not a 12 day loop.\n {data_fns[start:start+4]}")
-    
-    # If a1 and a2 files cannot be found:
-    #     Find a1
-    #     Find a2
-    try:
+    if not check: 
+        sys.exit(f"Not a 12 day loop.\n {data_fns[start:start+4]}")
+    else: pass
+
+    a_filename = "a_variables.npy"
+
+    if Path(a_filename).is_file():
         a1, a2 = np.load("a_variables.npy")
         print ("a1 and a2 files read.")
-    except FileNotFoundError:
+    else:
         print ("Creating a1 and a2 files. ")
         phi6 = daisychain(data_fns, start, n=360, m=6, ml=ml)
         phi12 = daisychain(data_fns, start, n=360, m=12, ml=ml)
@@ -80,92 +82,125 @@ def main():
 
     # print (a1, a2)
     
-    a1[:] = 0.47 # From literature
+    a1[:] = 0.47 # From literature    
     a2[:] = 0.31 # From literature
-    
-    try:
-        # m = np.load("mhatnp.angle(.)npy")
-        m = np.load("asdasdamhat.npy") # stupid hack
-        print ("m loaded")
-    except FileNotFoundError:
 
-        print ("Forming d")
+    m_filename = "mhat_.npy"
+    if Path(m_filename).is_file():
+        m = np.load(m_filename) # stupid hack
+        print ("mhat loaded")
+    else:
+        print ("Getting loop closures (d)")
         # Calc misclosure between i and i+2 [0_2 - (0_1 + 1_2)]
         # Calc misclosure between i+1 and i+3 [1_3 - (1_2 + 2_3)]
         # Calc misclosure between i and i+3 [0_3 - (0_1 + 1_2 + 2_3)] 
-        closure_0_2 = makeLoop(start, data_fns, shape=shape, short=6, long=12, ml=ml)
-        closure_1_3 = makeLoop(start+1, data_fns, shape=shape, short=6, long=12, ml=ml)
-        closure_0_3 = makeLoop(start, data_fns, shape=shape, short=6, long=18, ml=ml)
+        closure_0_2, _ = makeLoop(start, data_fns, shape=shape, short=6, long=12, ml=ml)
+        closure_1_3, _ = makeLoop(start+1, data_fns, shape=shape, short=6, long=12, ml=ml)
+        closure_0_3, _ = makeLoop(start, data_fns, shape=shape, short=6, long=18, ml=ml)
 
-        # fig, ax = plt.subplots(nrows=2, ncols=3)
-        # p = ax[0, 0].matshow(np.angle(closure_0_2), vmin=-np.pi, vmax=np.pi)
-        # ax[0, 1].matshow(np.angle(closure_1_3), vmin=-np.pi, vmax=np.pi)
-        # ax[0, 2].matshow(np.angle(closure_0_3), vmin=-np.pi, vmax=np.pi)
+        # =========================== Make plot for closure phases ================================
 
-        # plt.colorbar(p, ax=ax[0, :])
+        fig, ax = plt.subplots(nrows=2, ncols=3)
+        p = ax[0, 0].matshow(np.angle(closure_0_2), vmin=-np.pi, vmax=np.pi)
+        ax[0, 1].matshow(np.angle(closure_1_3), vmin=-np.pi, vmax=np.pi)
+        ax[0, 2].matshow(np.angle(closure_0_3), vmin=-np.pi, vmax=np.pi)
 
-        # ax[1, 0].hist(np.angle(closure_0_2).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
-        # ax[1, 1].hist(np.angle(closure_1_3).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
-        # ax[1, 2].hist(np.angle(closure_0_3).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+        plt.colorbar(p, ax=ax[:])
+
+        ax[1, 0].hist(np.angle(closure_0_2).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+        ax[1, 1].hist(np.angle(closure_1_3).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+        ax[1, 2].hist(np.angle(closure_0_3).flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+
+        ax[0, 0].set_title("closure_0_2")
+        ax[0, 1].set_title("closure_1_3")
+        ax[0, 2].set_title("closure_0_3")
 
         # Make array of shape (3, 1, im.shape[0], im.shape[1])
-        # How to apply a matrix mult to each value in another matrix
-        d = np.stack((closure_0_2.flatten(), closure_1_3.flatten(), closure_0_3.flatten()))
+        # This is the "data" matrix for the inversion
+        d = np.stack((np.angle(closure_0_2).flatten(), np.angle(closure_1_3).flatten(), np.angle(closure_0_3).flatten()))
         
-        m = np.empty((d.T.shape))
-        for p_ix, pixel in enumerate(d.T):
-            
-            G = np.zeros((3, 3))
-            G[0, :2] = a1[p_ix] - 1
-            G[1, 1:] = a1[p_ix] - 1
-            G[2, :] = a2[p_ix] - 1
+        print ("Looping through pixels\n")
 
-            print (f"Pixel {p_ix}/{d.shape[1]} ({p_ix*100/d.shape[1]:.2f}%)", "\r")
-            mhat = np.linalg.inv(G.transpose() @ G) @ G.transpose() @ pixel
-            m[p_ix] = mhat
+        # Create the matrix for the "model" parameters
+        m = np.empty((d.T.shape))
+        
+        dates = np.array([datetime.strftime(datetime.strptime(date, "%Y%m%d") + timedelta(days=6*d), "%Y%m%d") for d in [0, 1, 2, 3]])
+
+        # ================================== Make the mask ======================================
+
+        coh_0_1 = multilook(h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[1]}/{dates[0]}-{dates[1]}_coh.h5")["Coherence"][:], ml[0], ml[1])
+        coh_1_2 = multilook(h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[2]}/{dates[1]}-{dates[2]}_coh.h5")["Coherence"][:], ml[0], ml[1])
+        coh_2_3 = multilook(h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[3]}/{dates[2]}-{dates[3]}_coh.h5")["Coherence"][:], ml[0], ml[1])
+        coh_0_3 = multilook(h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[3]}/{dates[0]}-{dates[3]}_coh.h5")["Coherence"][:], ml[0], ml[1])
+
+        mask = (coh_0_1/255 > 0.3) & (coh_1_2/255 > 0.3) & (coh_2_3/255 > 0.3) & (coh_0_3/255 > 0.3)
+        plt.matshow(mask)
+        plt.colorbar()
+        mask = mask.flatten()
+        
+        mask[:] = True
+
+        # ============================= Loop through each pixel =================================
+
+        for p_ix, pixel in enumerate(d.T):
+            if mask[p_ix]:
+                print (f"Pixel {p_ix}/{d.shape[1]} ({p_ix*100/d.shape[1]:.2f}%)", end="\r")
+                # Create matrix G for the inversion and fill with a1 or a2 vals
+                G = np.zeros((3, 3))
+                G[0, :2] = a1[p_ix] - 1
+                G[1, 1:] = a1[p_ix] - 1
+                G[2, :] = a2[p_ix] - 1
+
+                # Do the inversion - is this correct??
+                # mhat = np.linalg.inv(G.transpose() @ G) @ G.transpose() @ pixel
+                mhat = np.linalg.lstsq(G, pixel)
+                # print (mhat)
+                m[p_ix] = mhat[0]
+            else:
+                m[p_ix] = np.array([np.nan, np.nan, np.nan])
 
         np.save("mhat.npy", m)
-        print (m.shape)
     
-    # ======= Plotting the correction for the individual interferograms of a loop ========
-
-    # print (f"{m[:, 0].min() = }, {m[:, 0].max() = }")
-    # print (f"{m[:, 1].min() = }, {m[:, 1].max() = }")
-    # print (f"{m[:, 2].min() = }, {m[:, 2].max() = }")
-
+    # ============ Plotting the correction for the individual interferograms of a loop ============
     fig, ax = plt.subplots(nrows=2, ncols=3)
     
     delta01 = m[:, 0].reshape(shape) # Radians
     delta12 = m[:, 1].reshape(shape)
+    delta02 = np.angle(np.exp(1j*(a1*(m[:, 0]+m[:, 1])))).reshape(shape)
 
-    delta02 = (a1*(m[:, 0]+m[:, 1])).reshape(shape)
-
-    # p = ax[0, 0].matshow(delta01, vmin=-np.pi, vmax=np.pi)
-    # ax[0, 1].matshow(delta12, vmin=-np.pi, vmax=np.pi)
-    # ax[0, 2].matshow(delta02, vmin=-np.pi, vmax=np.pi)
+    p = ax[0, 0].matshow(delta01, vmin=-np.pi, vmax=np.pi)
+    ax[0, 1].matshow(delta12, vmin=-np.pi, vmax=np.pi)
+    ax[0, 2].matshow(delta02, vmin=-np.pi, vmax=np.pi)
     
-    # plt.colorbar(p, ax=ax[:])
-    # ax[0, 0].set_title("$\delta_{i,i+1}$")
-    # ax[0, 1].set_title("$\delta_{i+1,i+2}$")
-    # ax[0, 2].set_title("$\delta_{i,i+2}$")
+    plt.colorbar(p, ax=ax[:])
+    ax[0, 0].set_title("$\delta_{i,i+1}$")
+    ax[0, 1].set_title("$\delta_{i+1,i+2}$")
+    ax[0, 2].set_title("$\delta_{i,i+2}$")
 
-    # ax[1, 0].hist(m[:, 0], bins=np.linspace(-np.pi, np.pi, 30))
-    # ax[1, 1].hist(m[:, 1], bins=np.linspace(-np.pi, np.pi, 30))
-    # ax[1, 2].hist(m[:, 2], bins=np.linspace(-np.pi, np.pi, 30))
+    ax[1, 0].hist(m[:, 0], bins=np.linspace(-np.pi, np.pi, 30))
+    ax[1, 1].hist(m[:, 1], bins=np.linspace(-np.pi, np.pi, 30))
+    ax[1, 2].hist(delta02.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
 
-    # ax[1, 0].hist(delta01.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
-    # ax[1, 1].hist(delta12.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
-    # ax[1, 2].hist(delta02.flatten(), bins=np.linspace(-np.pi, np.pi, 30))
+    # ====================================================================================
 
     shortcorr = np.stack((delta01, delta12))
     
-    loop = makeLoop(start, data_fns, shape=shape, short=6, long=12, ml=ml)
+    loop, loop_ = makeLoop(start, data_fns, shape=shape, short=6, long=12, ml=ml) #, mask=mask.reshape(shape)) # Make the loop (6, 6, 12)
 
-    closure_corr = np.exp(1j*(delta02 - (delta01 + delta12)))
+    closure_corr = np.exp(1j*(delta02 - (delta01 + delta12))) # Create the loop using the corrections
 
-    loopc = np.angle(loop * closure_corr.conjugate())
+    correct_individual_ifg(loop_, np.array([delta01, delta12, delta02]))
 
-    loop = np.angle(loop)
+    print (f"{type(loop[0, 0]) = }")
+    print (f"{type(closure_corr[0, 0]) = }")
+
+    # loopc = np.angle(loop * closure_corr.conjugate()) # Loop - correction and convert to radians
+    
+    loopc = np.angle(loop * np.conjugate(closure_corr)) # Loop - correction and convert to radians
+    print (np.isnan(loopc).all())
+    plt.figure()
+    plt.hist(loopc.flatten())
+    loop = np.angle(loop) # Get it back to radians
 
     if plot:
         plot_results(loop, loopc)
@@ -173,10 +208,35 @@ def main():
         pass
 
     if save:
-        save_corrected(loopc, date)
+        save_corrected(loop, loopc, date)
     else:
         pass
 
+def correct_individual_ifg(ifgs, corrections):
+    
+    fig, ax = plt.subplots(3, 3, sharex=True, sharey=True)
+    
+    corrected = np.angle(np.exp(1j*(np.angle(ifgs)-corrections)))
+
+    for mat, a in zip(np.angle(ifgs), ax[0, :]):
+        a.matshow(mat, vmin=-np.pi, vmax=np.pi)
+        a.set_title("Uncorrected ifgs")
+    for mat, a in zip(corrections, ax[1, :]):
+        a.matshow(mat, vmin=-np.pi, vmax=np.pi)
+        a.set_title("Correction for each ifg")
+    for mat, a in zip(corrected, ax[2, :]):
+        a.matshow(mat, vmin=-np.pi, vmax=np.pi)
+        a.set_title("Corrected ifgs")
+
+    fig.suptitle("ifg_0_6, ifg_6_12, ifg_0_12")
+
+    # plt.figure()
+
+    p = plt.matshow(np.angle(np.exp(1j*(corrected[-1] - (corrected[0] + corrected[1])))), vmin=-np.pi, vmax=np.pi)
+    plt.colorbar(p)
+    plt.title("Loop of corrected interferograms")
+    
+    return ax 
 
 def plot_results(loop, loopc):
     fig, ax = plt.subplots(nrows=2, ncols=3)
@@ -191,8 +251,10 @@ def plot_results(loop, loopc):
     ax[1, 1].hist(loopc.flatten(), bins=np.linspace(-np.pi, np.pi, 50))
     ax[0, 1].set_title("12, 6, 6, corrected loop")
 
-    ax[0, 2].matshow(loopc-loop, vmin=-np.pi, vmax=np.pi)
-    ax[1, 2].hist((loopc-loop).flatten(), bins=np.linspace(-np.pi, np.pi, 50))
+    residual = np.angle(np.exp(1j*(loopc-loop)))
+    
+    ax[0, 2].matshow(residual, vmin=-np.pi, vmax=np.pi)
+    ax[1, 2].hist(residual.flatten(), bins=np.linspace(-np.pi, np.pi, 50))
     ax[0, 2].set_title("Residual")
 
     plt.colorbar(p, ax=ax[:])
@@ -205,56 +267,68 @@ def save_corrected(loop, loopc, date_str):
 
     return True
 
-def makeLoop(ix, fns, shape, short=6, long=12, ml=[3, 12]):
+def makeLoop(ix, fns, shape, short=6, long=12, ml=[3, 12], mask=None):
 
     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
-    long_fns  = [short_fns[0], short_fns[-1]]
-    
-    short_ifgs = np.full((len(short_fns)-1, *shape), fill_value=np.nan, dtype=np.complex64)
-    i = 0
-    for ifgfn1, ifgfn2 in zip(short_fns[:-1], short_fns[1:]):
-        ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:])
-        ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:])
+                # [filename for filenames in fns[start:, start + number_of_short_ifgs_in_loop + 1]]
 
-        ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
-        short_ifgs[i] = ifg12
-        i += 1
+    long_fns  = [short_fns[0], short_fns[-1]] # First and last ifgs from the short ifgs since this is a closed loop
+    
+    short_ifgs = np.full((len(short_fns)-1, *shape), fill_value=np.nan, dtype=np.complex64) # Initialise the array
+    i = 0 # Initialise the index for putting data into the short_ifgs array
+
+    for ifgfn1, ifgfn2 in zip(short_fns[:-1], short_fns[1:]): # zip([fn1, fn2], [fn2, fn3])
+
+        ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:]) # Load in the first ifg
+        ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:]) # Load in the second ifg
+
+        ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create an ifg between them and multilook
+        short_ifgs[i] = ifg12 # Put it in the short_ifgs array
+        i += 1 # Move to the next position in the short_ifgs array
         
-    ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:])
-    ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:])
-    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
+    ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:]) # Load the first ifg of the ifg spanning the whole time
+    ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:]) # Load in the second ifg of the ifg spanning the whole time
+    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create the ifg between them and multilook
 
-    closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate()
+    closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate() # Compute the closure phase
 
-    return closure
+    if isinstance(mask, type(None)):
+        pass
+    else:
+        closure[mask] = np.nan + 1j*np.nan
+        short_ifgs[0][mask] = np.nan + 1j*np.nan
+        short_ifgs[1][mask] = np.nan + 1j*np.nan
+        long_ifg[mask] = np.nan + 1j*np.nan
+
+    return closure, np.array([short_ifgs[0], short_ifgs[1], long_ifg])
 
 
-def makeCorrectedLoop(ix, fns, shortcorr, longcorr, shape, short=6, long=12, ml=[3, 12]):
-    # Something funky is happening here.....
+# def makeCorrectedLoop(ix, fns, shortcorr, longcorr, shape, short=6, long=12, ml=[3, 12]):
+#     # Something funky is happening here.....
 
-    short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
-    long_fns  = [short_fns[0], short_fns[-1]]
+#     short_fns = [f"{fn}/{fn.split('/')[-1]}_ph.h5" for fn in fns[ix:ix + int(long/short) + 1]]
+#     long_fns  = [short_fns[0], short_fns[-1]]
     
-    short_ifgs = np.full((len(short_fns)-1, *shape), fill_value=np.nan, dtype=np.complex64)
-    i = 0
-    for ifgfn1, ifgfn2 in zip(short_fns[:-1], short_fns[1:]):
-        ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:])
-        ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:])
+#     short_ifgs = np.full((len(short_fns)-1, *shape), fill_value=np.nan, dtype=np.complex64)
+#     i = 0
+#     for ifgfn1, ifgfn2 in zip(short_fns[:-1], short_fns[1:]):
+#         ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:])
+#         ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:])
 
-        ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
-        short_ifgs[i] = ifg12
-        i+=1
+#         ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
+#         short_ifgs[i] = ifg12
+#         i+=1
         
-    ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:])
-    ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:])
-    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
+#     ifg1 = np.exp(1j*h5.File(long_fns[0], "r")["Phase"][:])
+#     ifg2 = np.exp(1j*h5.File(long_fns[1], "r")["Phase"][:])
+#     long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1])
 
-    closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate()
-    closure_corr = np.exp(1j*longcorr)*np.prod(np.exp(1j*shortcorr), axis=0, dtype=np.complex64)
+#     closure = long_ifg*np.prod(short_ifgs, axis=0, dtype=np.complex64).conjugate()
+#     closure_corr = np.exp(1j*longcorr)*np.prod(np.exp(1j*shortcorr), axis=0, dtype=np.complex64)
     
-    # closure = (long_ifg*longcorr.conjugate())*np.prod(short_ifgs*np.exp(1j*shortcorr).conjugate(), axis=0, dtype=np.complex64).conjugate()
+#     # closure = (long_ifg*longcorr.conjugate())*np.prod(short_ifgs*np.exp(1j*shortcorr).conjugate(), axis=0, dtype=np.complex64).conjugate()
 
-    return np.angle(closure*closure_corr)
+#     return np.angle(closure*closure_corr)
 
 def finddifferences(fns):
     """
