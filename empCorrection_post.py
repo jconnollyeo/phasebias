@@ -74,7 +74,7 @@ def main():
 
     corrections = correctionLoops(mhat)
 
-    fig, ax = plt.subplots(nrows=1, ncols=2)
+    fig, ax = plt.subplots(nrows=2, ncols=1)
 
     uncorrected_mean = np.angle(np.mean(np.exp(1j*d12[::2]), axis=1))
     corrected_mean = np.angle(np.mean(np.exp(1j*(d12[::2]-corrections)), axis=1))
@@ -82,11 +82,11 @@ def main():
     uncorrected_mean_cohfilt = np.angle(np.mean(np.exp(1j*d12[::2])[:, mask.flatten()], axis=1))
     corrected_mean_cohfilt = np.angle(np.mean(np.exp(1j*(d12[::2]-corrections))[:, mask.flatten()], axis=1))
 
-    ax[0].plot(dates_between[1::2], np.cumsum(uncorrected_mean), label="Uncorrected phase closure")
-    ax[0].plot(dates_between[1::2], np.cumsum(corrected_mean), label="Corrected phase closure")
+    ax[0].plot(dates_between[1::2], np.cumsum(uncorrected_mean), label="Uncorrected phase closure", ls='--', color="red")
+    ax[0].plot(dates_between[1::2], np.cumsum(corrected_mean), label="Corrected phase closure", color="red")
 
-    ax[0].plot(dates_between[1::2], np.cumsum(uncorrected_mean_cohfilt), label="Uncorrected phase closure (coh > 0.3)", ls='--')
-    ax[0].plot(dates_between[1::2], np.cumsum(corrected_mean_cohfilt), label="Corrected phase closure (coh > 0.3)", ls='--')
+    ax[0].plot(dates_between[1::2], np.cumsum(uncorrected_mean_cohfilt), label="Uncorrected phase closure (coh > 0.3)", color="green")
+    ax[0].plot(dates_between[1::2], np.cumsum(corrected_mean_cohfilt), label="Corrected phase closure (coh > 0.3)", ls='--', color="green")
 
     ax[0].legend()
 
@@ -103,11 +103,27 @@ def main():
         corrected_mean_lcfilt = np.angle(np.mean(np.exp(1j*(d12[::2]-corrections))[:, lc_mask.flatten()], axis=1))
 
         ax[1].plot(dates_between[1::2], np.cumsum(uncorrected_mean_lcfilt), color=colors[lc_type], ls="-", label=labels[lc_type])
-        ax[1].plot(dates_between[1::2], np.cumsum(corrected_mean_lcfilt), color=colors[lc_type], ls="..", label=labels[lc_type])
+        ax[1].plot(dates_between[1::2], np.cumsum(corrected_mean_lcfilt), color=colors[lc_type], ls="--", label=labels[lc_type])
+
     ax[1].legend()
 
     ax[1].set_xlabel("Date")
     ax[1].set_ylabel("Phase (mis)closure (radians)")
+
+    fig, ax = plt.subplots(nrows=2, ncols=2)
+
+    p=ax[0, 0].matshow(np.where(mask, np.angle(np.sum(np.exp(1j*d12[::2]), axis=0)).reshape(shape), np.nan), vmin=-1, vmax=1)
+    ax[0, 1].matshow(np.where(mask, np.angle(np.sum(np.exp(1j*(d12[::2]-corrections)), axis=0)).reshape(shape), np.nan), vmin=-1, vmax=1)
+
+    ax[1, 0].hist(np.where(mask.flatten(), np.angle(np.sum(np.exp(1j*d12[::2]), axis=0)), np.nan), bins=np.linspace(-1, 1, 30))
+    ax[1, 1].hist(np.where(mask.flatten(), np.angle(np.sum(np.exp(1j*(d12[::2]-corrections)), axis=0)), np.nan), bins=np.linspace(-1, 1, 30))
+
+    cbar = plt.colorbar(p, ax=ax[:])
+    cbar.ax.set_ylabel("Phase closure, radians")
+    
+    ax[0, 0].set_title("Cumulative sum uncorrected phase closure")
+    ax[0, 1].set_title("Cumulative sum corrected phase closure")
+
     plt.show()
     
 def correctionLoops(m):
