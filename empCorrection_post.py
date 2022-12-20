@@ -9,8 +9,6 @@ import sys
 import h5py as h5
 from loopClosure_post import convert_landcover, multilook_mode
 
-# from empCorrection_TS import coherence_mask
-
 def parse_args():
     """
     Parses command line arguments and defines help output
@@ -69,7 +67,7 @@ def main():
     landcover_fp = "/workspace/rapidsar_test_data/south_yorkshire/datacrop_20220204.h5"
     landcover_full = convert_landcover(h5.File(landcover_fp)["Landcover"][:])
     landcover, perc = multilook_mode(landcover_full, ml, preserve_res=False)
-
+    shape = landcover.shape
     # END LANDCOVER
 
     corrections = correctionLoops(mhat)
@@ -82,8 +80,8 @@ def main():
     uncorrected_mean_cohfilt = np.angle(np.mean(np.exp(1j*d12[::2])[:, mask.flatten()], axis=1))
     corrected_mean_cohfilt = np.angle(np.mean(np.exp(1j*(d12[::2]-corrections))[:, mask.flatten()], axis=1))
 
-    ax[0].plot(dates_between[1::2], np.cumsum(uncorrected_mean), label="Uncorrected phase closure", ls='--', color="red")
-    ax[0].plot(dates_between[1::2], np.cumsum(corrected_mean), label="Corrected phase closure", color="red")
+    ax[0].plot(dates_between[1::2], np.cumsum(uncorrected_mean), label="Uncorrected phase closure", color="red")
+    ax[0].plot(dates_between[1::2], np.cumsum(corrected_mean), label="Corrected phase closure", color="red", ls="--")
 
     ax[0].plot(dates_between[1::2], np.cumsum(uncorrected_mean_cohfilt), label="Uncorrected phase closure (coh > 0.3)", color="green")
     ax[0].plot(dates_between[1::2], np.cumsum(corrected_mean_cohfilt), label="Corrected phase closure (coh > 0.3)", ls='--', color="green")
@@ -104,7 +102,7 @@ def main():
 
         ax[1].plot(dates_between[1::2], np.cumsum(uncorrected_mean_lcfilt), color=colors[lc_type], ls="-", label=labels[lc_type])
         ax[1].plot(dates_between[1::2], np.cumsum(corrected_mean_lcfilt), color=colors[lc_type], ls="--", label=labels[lc_type])
-
+    
     ax[1].legend()
 
     ax[1].set_xlabel("Date")
@@ -124,7 +122,35 @@ def main():
     ax[0, 0].set_title("Cumulative sum uncorrected phase closure")
     ax[0, 1].set_title("Cumulative sum corrected phase closure")
 
+    # uncorrected_sum, corrected_sum = sumPhaseTS(loop12, mhat, shape)
+    # fig, ax = plt.subplots(nrows=1, ncols=2)
+
+    # p = ax[0].matshow(uncorrected_sum, vmin=-50, vmax=50)
+    # plt.colorbar(p, ax=ax[0])
+    # p = ax[1].matshow(corrected_sum, vmin=-50, vmax=50)
+    # plt.colorbar(p, ax=ax[1])
+    
+    # ax[0].set_title("Uncorrected wrapped phase sum")
+    # ax[1].set_title("Corrected wrapped phase sum")
+
+
     plt.show()
+
+
+def sumPhaseTS(loops, corrections, shape, ml=[3, 12]):
+    fns = [fn for loop in loops[::2] for fn in loop[:-1]]
+    
+    phase = np.empty((len(fns), *shape))
+    
+    for i, fn in enumerate(fns):
+        phase[i] = multilook(h5.File(fn)["Phase"][:], ml[0], ml[1])
+
+    phase_6day = np.angle(np.exp(1j*(phase[:-1] - phase[1:])))
+
+    uncorrected_sum = np.sum(phase_6day, axis=0)
+    corrected_sum = np.sum(np.angle(np.exp(1j*(phase_6day-corrections.reshape(corrections.shape[0], *shape)[:-1]))), axis=0)
+
+    return uncorrected_sum, corrected_sum
     
 def correctionLoops(m):
     out = np.zeros_like(m[::2])#[:-1, :]
