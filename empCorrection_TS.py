@@ -36,8 +36,19 @@ def main():
     timeseries_length = (datetime.strptime(enddate, "%Y%m%d") - datetime.strptime(startdate, "%Y%m%d")).days
     # Makes a list of datetime dates spanning the interval seperated by 6 days
     dates_between = [datetime.strptime(startdate, "%Y%m%d") + timedelta(days=int(d)) for d in np.arange(0, timeseries_length+1, 6)] 
+    
     # Loop through each of the dates and extract the filename from the specified wdir and frame_ID
-    ifg_filenames = [glob.glob(f"{wdir}/{frame_ID}/IFG/singlemaster/*_{datetime.strftime(date, '%Y%m%d')}/*")[0] for date in dates_between]
+    ifg_filenames = []
+    missing_files = []
+
+    for date in dates_between:
+        fn = glob.glob(f"{wdir}/{frame_ID}/IFG/singlemaster/*_{datetime.strftime(date, '%Y%m%d')}/*")
+        if len(fn) == 1:
+            ifg_filenames.append(fn)
+        else:
+            missing_files.append(fn)
+
+    # ifg_filenames = [glob.glob(f"{wdir}/{frame_ID}/IFG/singlemaster/*_{datetime.strftime(date, '%Y%m%d')}/*")[0] for date in dates_between]
 
     # Make sure that the number of ifg inputs is greater than 5 for an overdetermined inverse problem. 
     assert len(ifg_filenames) >= 5, f"Currently N = {len(ifg_filenames)}, N >= 5 (overdetermined). "
@@ -66,11 +77,11 @@ def main():
         d[i] = np.angle(closure).flatten()
 
     # Save this data based on the time interval specified at cmd line
-    np.save(f"d_matrix_dates_{startdate}_{enddate}_12.npy", np.asarray(loop12))
-    np.save(f"d_matrix_dates_{startdate}_{enddate}_18.npy", np.asarray(loop18))
+    # np.save(f"d_matrix_dates_{startdate}_{enddate}_12.npy", np.asarray(loop12))
+    # np.save(f"d_matrix_dates_{startdate}_{enddate}_18.npy", np.asarray(loop18))
 
-    np.save(f"d_matrix_{startdate}_{enddate}_12.npy", d[:len(loop12)])
-    np.save(f"d_matrix_{startdate}_{enddate}_18.npy", d[len(loop12):])
+    # np.save(f"d_matrix_{startdate}_{enddate}_12.npy", d[:len(loop12)])
+    # np.save(f"d_matrix_{startdate}_{enddate}_18.npy", d[len(loop12):])
 
     print ("Finished d\n")
 
@@ -84,10 +95,16 @@ def main():
     G18 = np.zeros((len(loop18), len(ifg_filenames)-1))
 
     for i in range(0, len(loop12)):
-        G12[i, i:i+2] = a1 - 1
+        if len(loop12[i]) == 3:
+            G12[i, i:i+2] = a1 - 1
+        else:
+            pass
 
     for i in range(0, len(loop18)):
-        G18[i, i:i+3] = a2 - 1
+        if len(loop18[i]) == 4:
+            G18[i, i:i+3] = a2 - 1
+        else:
+            pass
 
     G = np.concatenate((G12, G18), axis=0)
     print ("Finished G")
@@ -101,9 +118,25 @@ def main():
     # ============================================ Plot and save the data ==========================================
     
     if save:
+        print ("Saving output")
         # np.save(f"Correction_{startdate}_{enddate}.npy", mhat[0])
-        # Save each correction as h5 file
-        print ()
+        dates = [datetime.strftime(d, "%Y%m%d") for d in dates_between] 
+        for i in np.arange(mhat.shape[1]):
+
+            m_06day = mhat[0][i]
+            m_12day = (a1-1)*(mhat[0][i] + mhat[0][i+1])
+            m_18day = (a2-1)*(mhat[0][i] + mhat[0][i+1] + mhat[0][i+2])
+
+            fn06_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5"
+            fn12_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5"
+            fn18_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5"
+
+            print (fn06_out)
+            for fn, m in zip([fn06_out, fn12_out, fn18_out], [m_06day, m_12day, m_18day]):
+                with h5.File(fn, 'w') as f:
+                    f.create_dataset("Correction", m)
+        
+        print ("Corrections saved")
     else: pass
     
     if plot:
@@ -221,7 +254,7 @@ def parse_args():
                         type=int,
                         dest='plot',
                         help="Plot?",
-                        default=1)
+                        default=0)
     parser.add_argument("-s",
                         type=int,
                         dest='save',
