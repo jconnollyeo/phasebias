@@ -101,7 +101,9 @@ def main():
     # ============================================ Plot and save the data ==========================================
     
     if save:
-        np.save(f"Correction_{startdate}_{enddate}.npy", mhat[0])
+        # np.save(f"Correction_{startdate}_{enddate}.npy", mhat[0])
+        # Save each correction as h5 file
+        print ()
     else: pass
     
     if plot:
