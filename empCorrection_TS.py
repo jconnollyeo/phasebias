@@ -96,7 +96,6 @@ def main():
 
     for i in range(0, len(loop12)):
         if not (np.array([len(fn) for fn in loop12[i]]) == 0).any():
-        # if len(loop12[i]) == 3:
             G12[i, i:i+2] = a1 - 1
         else:
             pass
@@ -189,8 +188,6 @@ def plot_results_map(loop, correction, title=None):
     else:
         plt.suptitle(title)
     return ax
-    
-
 
 def coherence_mask(dates_between, dir, ml, shape):
     # IGNORE - DELETE
