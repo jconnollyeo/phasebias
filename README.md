@@ -1,5 +1,7 @@
 # Phase bias work while at SatSense
-I have created a script that calculates the loop closure for a stack of interferograms. It can handle different amounts of multilooking and different lengths of loops.  
+
+## loopClosure.py:
+Script that calculates the loop closure for a stack of interferograms. It can handle different amounts of multilooking and different lengths of loops.  
 
 	python loopClosure.py -i 0 -d 2 -m 3,12 -p 1 -s 0    
 
@@ -36,3 +38,11 @@ i: start ifg
 m: length of m-day ifg (see paper for explanation). if m != 0, the code will produce a single image with n=60 and m=m, while if m==0 then it will reproduce the whole figure from m=6, 12, ..., 36.
 
 g: grid boolean. If True (1), segments the data by taking the mean of each segment for the plots. Helps to show deviations from 0 for the loop closure in the maps. 
+
+## Implementing the empirical correction:
+
+	python empCorrection_TS.py -d "20210101,20220101" -p 0 -s 1
+	
+	d: date range
+	p: Plot output (Don't do if input is N>5)
+	s: Save output arrays.
