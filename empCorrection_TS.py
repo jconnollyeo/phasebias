@@ -40,13 +40,17 @@ def main():
     # Loop through each of the dates and extract the filename from the specified wdir and frame_ID
     ifg_filenames = []
     missing_files = []
+    missing_files_ix = []
 
-    for date in dates_between:
+
+    for i, date in enumerate(dates_between):
         fn = glob.glob(f"{wdir}/{frame_ID}/IFG/singlemaster/*_{datetime.strftime(date, '%Y%m%d')}/*")
         if len(fn) == 1:
-            ifg_filenames.append(fn)
+            ifg_filenames.append(fn[0])
         else:
-            missing_files.append(fn)
+            ifg_filenames.append("")
+            missing_files.append(f"{wdir}/{frame_ID}/IFG/singlemaster/*_{datetime.strftime(date, '%Y%m%d')}/")
+            missing_files_ix.append(i)
 
     # ifg_filenames = [glob.glob(f"{wdir}/{frame_ID}/IFG/singlemaster/*_{datetime.strftime(date, '%Y%m%d')}/*")[0] for date in dates_between]
 
@@ -59,9 +63,10 @@ def main():
     # Fetch the shape of the multilooked phase - this is needed for creating output arrays going forward
     shape = multilook(h5.File(ifg_filenames[0])["Phase"][:], ml[0], ml[1]).shape
     
-    # Can delete this?
-    mask = coherence_mask(dates_between, f"{wdir}/{frame_ID}", ml, shape)
-    mask[:] = True
+    # Create mask
+    av_coherence = h5.File(f"{wdir}/{frame_ID}/ruralvelcrop_20221013.h5")["Average_Coh"][:]
+    mask = av_coherence > 0.3
+    mask = np.ones(shape, dtype=bool) # Temporary
 
     # =================================== Create the d matrix and make the loops ===================================
     
@@ -72,19 +77,14 @@ def main():
     # Create the phase closure for each loop in loop12 and loop18 and assign to d
     for i, loop_fns in enumerate(loop12 + loop18):
         print (i, end="\r")
-        long_ifg, short_ifgs = makeLoop(loop_fns, mask=mask, shape=shape, ml=ml)
-        closure = np.exp(1j* (np.angle(long_ifg) - (np.sum(np.angle(short_ifgs), axis=0)) ) )
-        d[i] = np.angle(closure).flatten()
-
-    # Save this data based on the time interval specified at cmd line
-    # np.save(f"d_matrix_dates_{startdate}_{enddate}_12.npy", np.asarray(loop12))
-    # np.save(f"d_matrix_dates_{startdate}_{enddate}_18.npy", np.asarray(loop18))
-
-    # np.save(f"d_matrix_{startdate}_{enddate}_12.npy", d[:len(loop12)])
-    # np.save(f"d_matrix_{startdate}_{enddate}_18.npy", d[len(loop12):])
+        if (np.array([len(fn) for fn in loop_fns]) == 0).any():
+            d[i] = 0
+        else:
+            long_ifg, short_ifgs = makeLoop(loop_fns, shape=shape, ml=ml)
+            closure = np.exp(1j* (np.angle(long_ifg) - (np.sum(np.angle(short_ifgs), axis=0)) ) )
+            d[i] = np.angle(closure).flatten()
 
     print ("Finished d\n")
-
     # ======================================= Create and populate the G matrix =====================================
     print ("Creating G matrix")
 
@@ -95,20 +95,20 @@ def main():
     G18 = np.zeros((len(loop18), len(ifg_filenames)-1))
 
     for i in range(0, len(loop12)):
-        if len(loop12[i]) == 3:
+        if not (np.array([len(fn) for fn in loop12[i]]) == 0).any():
+        # if len(loop12[i]) == 3:
             G12[i, i:i+2] = a1 - 1
         else:
             pass
 
     for i in range(0, len(loop18)):
-        if len(loop18[i]) == 4:
+        if not (np.array([len(fn) for fn in loop18[i]]) == 0).any():
             G18[i, i:i+3] = a2 - 1
         else:
             pass
 
     G = np.concatenate((G12, G18), axis=0)
     print ("Finished G")
-
     # ============================================= Perform the inversion ==========================================
     print ("Doing inversion")
 
@@ -117,24 +117,26 @@ def main():
     print ("Finished inversion.")
     # ============================================ Plot and save the data ==========================================
     
+    mhat[~mask] = np.nan # Make the low coherence pixels correction to be nan
+
     if save:
         print ("Saving output")
-        # np.save(f"Correction_{startdate}_{enddate}.npy", mhat[0])
         dates = [datetime.strftime(d, "%Y%m%d") for d in dates_between] 
-        for i in np.arange(mhat.shape[1]):
+        for i in np.arange(mhat[0].shape[1]):
+            if not (mhat[0][i] == 0).all(): 
+                m_06day = mhat[0][i]
+                m_12day = (a1-1)*(mhat[0][i] + mhat[0][i+1])
+                m_18day = (a2-1)*(mhat[0][i] + mhat[0][i+1] + mhat[0][i+2])
 
-            m_06day = mhat[0][i]
-            m_12day = (a1-1)*(mhat[0][i] + mhat[0][i+1])
-            m_18day = (a2-1)*(mhat[0][i] + mhat[0][i+1] + mhat[0][i+2])
+                fn06_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5"
+                fn12_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5"
+                fn18_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5"
 
-            fn06_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5"
-            fn12_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5"
-            fn18_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5"
-
-            print (fn06_out)
-            for fn, m in zip([fn06_out, fn12_out, fn18_out], [m_06day, m_12day, m_18day]):
-                with h5.File(fn, 'w') as f:
-                    f.create_dataset("Correction", m)
+                for fn, m in zip([fn06_out, fn12_out, fn18_out], [m_06day, m_12day, m_18day]):
+                    with h5.File(fn, 'w') as f:
+                        f.create_dataset("Correction", m)
+            else: # If all the values are zero then skip since this file does not exist
+                pass
         
         print ("Corrections saved")
     else: pass
