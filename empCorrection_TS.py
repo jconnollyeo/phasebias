@@ -66,7 +66,7 @@ def main():
     # Create mask
     av_coherence = h5.File(f"{wdir}/{frame_ID}/ruralvelcrop_20221013.h5")["Average_Coh"][:]
     mask = av_coherence > 0.3
-    mask = np.ones(shape, dtype=bool) # Temporary
+    # mask = np.ones(shape, dtype=bool) # Temporary
 
     # =================================== Create the d matrix and make the loops ===================================
     
@@ -115,29 +115,33 @@ def main():
 
     print ("Finished inversion.")
     # ============================================ Plot and save the data ==========================================
-    
-    mhat[~mask] = np.nan # Make the low coherence pixels correction to be nan
+
+    mhat[0][:, ~mask.flatten()] = np.nan # Make the low coherence pixels correction to be nan
+    print (mhat)
+    missing_output_ix = np.concatenate((np.array(missing_files_ix), np.array(missing_files_ix)-1))
+    mhat[0][missing_output_ix, :] = np.nan
+    print (f"{missing_output_ix = }")  
 
     if save:
         print ("Saving output")
         dates = [datetime.strftime(d, "%Y%m%d") for d in dates_between] 
-        for i in np.arange(mhat[0].shape[1]):
-            if not (mhat[0][i] == 0).all(): 
-                m_06day = mhat[0][i]
-                m_12day = (a1-1)*(mhat[0][i] + mhat[0][i+1])
-                m_18day = (a2-1)*(mhat[0][i] + mhat[0][i+1] + mhat[0][i+2])
 
-                fn06_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5"
-                fn12_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5"
-                fn18_out = f"{wdir}/{frame_ID}/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5"
+        for i in np.arange(mhat[0].shape[0]):
+            # SAVE THE 6DAY CORRECTION
+            if i not in missing_output_ix:
+                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5", "w") as f:
+                    f.create_dataset("Correction", data=(mhat[0][i]).reshape(shape))
+            # SAVE THE 12DAY CORRECTION
+            if (i not in missing_output_ix) and (i+1 not in missing_output_ix) and (i+1 <= mhat[0].shape[0]-1):
+                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5", "w") as f:
+                    f.create_dataset("Correction", data=((a1)*(mhat[0][i] + mhat[0][i+1])).reshape(shape))
+            # SAVE THE 18DAY CORRECTION
+            if (i not in missing_output_ix) and (i+1 not in missing_output_ix) and (i+2 not in missing_output_ix) and (i+2 <= mhat[0].shape[0]-1):
+                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5", "w") as f:
+                    f.create_dataset("Correction", data=((a2)*(mhat[0][i] + mhat[0][i+1] + mhat[0][i+2])).reshape(shape))
 
-                for fn, m in zip([fn06_out, fn12_out, fn18_out], [m_06day, m_12day, m_18day]):
-                    with h5.File(fn, 'w') as f:
-                        f.create_dataset("Correction", m)
-            else: # If all the values are zero then skip since this file does not exist
-                pass
+        print ("Output saved")
         
-        print ("Corrections saved")
     else: pass
     
     if plot:
@@ -156,6 +160,14 @@ def main():
 
         plt.show()
     else: pass
+
+def saveh5(fns, arr):
+    for fn, m in zip(fns, arr):
+        try:
+            with h5.File(fn, "w") as f:
+                f.create_dataset("Correction", data=m)
+        except FileNotFoundError:
+            print (f"Missing: {fn}")
 
 def plot_results_map(loop, correction, title=None):
     """Plot the results in radar coords
