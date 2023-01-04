@@ -26,7 +26,10 @@ def main():
     save = int(args_dict["save"])
 
     a1, a2 = 0.47, 0.31
-    # a1, a2 = 
+    a1, a2 = np.load("a_variables.npy")
+    
+    a1 = np.nanmean(a1)
+    a2 = np.nanmean(a2)
 
     print (f"{startdate = }")
     print (f"{enddate = }")
@@ -41,7 +44,6 @@ def main():
     ifg_filenames = []
     missing_files = []
     missing_files_ix = []
-
 
     for i, date in enumerate(dates_between):
         fn = glob.glob(f"{wdir}/{frame_ID}/IFG/singlemaster/*_{datetime.strftime(date, '%Y%m%d')}/*")
@@ -84,12 +86,12 @@ def main():
             closure = np.exp(1j* (np.angle(long_ifg) - (np.sum(np.angle(short_ifgs), axis=0)) ) )
             d[i] = np.angle(closure).flatten()
 
+    print (f"{np.nanmax(d) = }, {np.nanmin(d) = }")
     print ("Finished d\n")
     # ======================================= Create and populate the G matrix =====================================
     print ("Creating G matrix")
 
     # Create G for the 12 day loops and 18 day loops seperately then concatenate them together.
-    # Need to come up with way to make this work when there are missing ifgs (ie the timeseries isn't made up of 6-day ifgs)
 
     G12 = np.zeros((len(loop12), len(ifg_filenames)-1))
     G18 = np.zeros((len(loop18), len(ifg_filenames)-1))
