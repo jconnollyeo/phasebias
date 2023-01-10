@@ -9,7 +9,7 @@ import argparse
 from utils import multilook
 
 def main():
-    """This is an implimentation of the empirical correction developed by Y Maghsoudi et al. 2021. 
+    """This is an implementation of the empirical correction developed by Y Maghsoudi et al. 2021. 
 
     Returns:
         _type_: _description_
@@ -67,7 +67,8 @@ def main():
     
     # Create mask
     av_coherence = h5.File(f"{wdir}/{frame_ID}/ruralvelcrop_20221013.h5")["Average_Coh"][:]
-    mask = av_coherence > 0.3
+    # mask = av_coherence > 0.3
+    mask = av_coherence > -999
     # mask = np.ones(shape, dtype=bool) # Temporary
 
     # =================================== Create the d matrix and make the loops ===================================
