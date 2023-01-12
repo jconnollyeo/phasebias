@@ -98,11 +98,16 @@ def main():
             pass
     
     d12 = []
-    for short, long in zip(phases_6day[::2]+phases_6day[1::2], phases_12day):
-        closure = np.angle(np.exp(1j*(long - short)))
-        d12.append(closure)
+    d12_corrected = []
 
-    plt.plot(np.angle(np.mean(np.exp(1j*np.array(d12)))))
+    for short, long, correction_short, correction_long in zip(phases_6day[::2]+phases_6day[1::2], phases_12day, corrections_6day, corrections_12day):
+        closure = np.angle(np.exp(1j*(long - short)))
+        closure_corrected = np.angle(np.exp(1j*((long-short) - (correction_long - correction_short))))
+        d12.append(closure)
+        d12_corrected.append(closure_corrected)
+
+    plt.plot(np.angle(np.nanmean(np.exp(1j*np.array(d12)))))
+    plt.plot(np.angle(np.nanmean(np.exp(1j*np.array(d12_corrected)))), label="Corrected")
     plt.show()
 
     sys.exit()
