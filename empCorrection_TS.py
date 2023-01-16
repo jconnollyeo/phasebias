@@ -26,10 +26,10 @@ def main():
     save = int(args_dict["save"])
 
     a1, a2 = 0.47, 0.31
-    a1, a2 = np.load("a_variables.npy")
+    # a1, a2 = np.load("a_variables.npy")
     
-    a1 = np.nanmean(a1)
-    a2 = np.nanmean(a2)
+    # a1 = np.nanmean(a1)
+    # a2 = np.nanmean(a2)
 
     print (f"{startdate = }")
     print (f"{enddate = }")
@@ -122,7 +122,10 @@ def main():
     mhat[0][:, ~mask.flatten()] = np.nan # Make the low coherence pixels correction to be nan
     print (mhat)
     missing_output_ix = np.concatenate((np.array(missing_files_ix), np.array(missing_files_ix)-1))
-    mhat[0][missing_output_ix, :] = np.nan
+    print (f"{missing_output_ix = }")  
+    if len(missing_output_ix) > 0:
+        mhat[0][missing_output_ix.astype(int), :] = np.nan
+    else: pass
     print (f"{missing_output_ix = }")  
 
     if save:
@@ -132,15 +135,15 @@ def main():
         for i in np.arange(mhat[0].shape[0]):
             # SAVE THE 6DAY CORRECTION
             if i not in missing_output_ix:
-                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5", "w") as f:
+                with h5.File(f"{wdir}/{frame_ID}/2021/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5", "w") as f:
                     f.create_dataset("Correction", data=(mhat[0][i]).reshape(shape))
             # SAVE THE 12DAY CORRECTION
             if (i not in missing_output_ix) and (i+1 not in missing_output_ix) and (i+1 <= mhat[0].shape[0]-1):
-                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5", "w") as f:
+                with h5.File(f"{wdir}/{frame_ID}/2021/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5", "w") as f:
                     f.create_dataset("Correction", data=((a1)*(mhat[0][i] + mhat[0][i+1])).reshape(shape))
             # SAVE THE 18DAY CORRECTION
             if (i not in missing_output_ix) and (i+1 not in missing_output_ix) and (i+2 not in missing_output_ix) and (i+2 <= mhat[0].shape[0]-1):
-                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5", "w") as f:
+                with h5.File(f"{wdir}/{frame_ID}/2021/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5", "w") as f:
                     f.create_dataset("Correction", data=((a2)*(mhat[0][i] + mhat[0][i+1] + mhat[0][i+2])).reshape(shape))
 
         print ("Output saved")
