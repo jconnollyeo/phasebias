@@ -22,7 +22,7 @@ def parse_args():
     parser.add_argument("-f",
                         type=Path,
                         dest='frame',
-                        default="jacob2",
+                        default="jacob2/data_with_correction",
                         help='Frame ID')
     parser.add_argument("-a",
                         type=str,
@@ -54,12 +54,69 @@ def main():
     
     timeseries_length = (datetime.strptime(enddate, "%Y%m%d") - datetime.strptime(startdate, "%Y%m%d")).days
     dates_between = [datetime.strptime(startdate, "%Y%m%d") + timedelta(days=int(d)) for d in np.arange(0, timeseries_length+1, 6)]
-    d12 = np.load(f"d_matrix_{startdate}_{enddate}_12.npy")
-    loop12 = np.load(f"d_matrix_dates_{startdate}_{enddate}_12.npy")
-    # loop18 = np.load(f"d_matrix_dates_{startdate}_{enddate}_18.npy")
-    mhat = np.load(f"Correction_{startdate}_{enddate}.npy")
-
     shape = (1000, 833)
+
+    master_date_str = Path(glob.glob(f"{wdir}/{frame_ID}/IFG/singlemaster/*")[0]).stem.split("_")[0]
+    
+    d12 = np.full((len(dates_between)-1, *shape), fill_value=np.nan)
+
+    corrections_6day = np.full((len(dates_between)-1, *shape), fill_value=np.nan)
+    phases_6day = np.full((len(dates_between)-1, *shape), fill_value=np.nan)
+
+    for i, (primary_date, secondary_date) in enumerate(zip(dates_between[:-1], dates_between[1:])):
+        
+        print (primary_date, secondary_date)
+
+        primary_date_str = datetime.strftime(primary_date, "%Y%m%d")
+        secondary_date_str = datetime.strftime(secondary_date, "%Y%m%d")
+        try:
+            correction = h5.File(f"{wdir}/{frame_ID}/Coherence/{secondary_date_str}/{primary_date_str}-{secondary_date_str}_corr.h5")["Correction"][:]
+            corrections_6day[i] = correction
+            ph1 = h5.File(f"{wdir}/{frame_ID}/IFG/singlemaster/{master_date_str}_{primary_date_str}/{master_date_str}_{primary_date_str}_ph.h5")["Phase"][:]
+            ph2 = h5.File(f"{wdir}/{frame_ID}/IFG/singlemaster/{master_date_str}_{secondary_date_str}/{master_date_str}_{secondary_date_str}_ph.h5")["Phase"][:]
+            phases_6day[i] = np.angle(multilook(np.exp(1j*(ph1 - ph2)), ml[0], ml[1]))
+        except FileNotFoundError:
+            pass
+
+    corrections_12day = np.full((len(dates_between)-1, *shape), fill_value=np.nan)
+    phases_12day = np.full((len(dates_between)-1, *shape), fill_value=np.nan)
+
+    for i, (primary_date, secondary_date) in enumerate(zip(dates_between[::2], dates_between[2::2])):
+
+        print (primary_date, secondary_date)
+
+        primary_date_str = datetime.strftime(primary_date, "%Y%m%d")
+        secondary_date_str = datetime.strftime(secondary_date, "%Y%m%d")
+
+        try:        
+            correction = h5.File(f"{wdir}/{frame_ID}/Coherence/{secondary_date_str}/{primary_date_str}-{secondary_date_str}_corr.h5")["Correction"][:]
+            corrections_12day[i] = correction
+            ph1 = h5.File(f"{wdir}/{frame_ID}/IFG/singlemaster/{master_date_str}_{primary_date_str}/{master_date_str}_{primary_date_str}_ph.h5")["Phase"][:]
+            ph2 = h5.File(f"{wdir}/{frame_ID}/IFG/singlemaster/{master_date_str}_{secondary_date_str}/{master_date_str}_{secondary_date_str}_ph.h5")["Phase"][:]
+            phases_12day[i] = np.angle(multilook(np.exp(1j*(ph1 - ph2)), ml[0], ml[1]))
+        except FileNotFoundError:
+            pass
+    
+    d12 = []
+    d12_corrected = []
+
+    for short, long, correction_short, correction_long in zip(phases_6day[::2]+phases_6day[1::2], phases_12day, corrections_6day, corrections_12day):
+        closure = np.angle(np.exp(1j*(long - short)))
+        closure_corrected = np.angle(np.exp(1j*((long-short) - (correction_long - correction_short))))
+        d12.append(closure)
+        d12_corrected.append(closure_corrected)
+
+    plt.plot(np.angle(np.nanmean(np.exp(1j*np.array(d12)))))
+    plt.plot(np.angle(np.nanmean(np.exp(1j*np.array(d12_corrected)))), label="Corrected")
+    plt.show()
+
+    sys.exit()
+
+    # d12 = np.load(f"d_matrix_{startdate}_{enddate}_12.npy")
+    # loop12 = np.load(f"d_matrix_dates_{startdate}_{enddate}_12.npy")
+    # loop18 = np.load(f"d_matrix_dates_{startdate}_{enddate}_18.npy")
+    # mhat = np.load(f"Correction_{startdate}_{enddate}.npy")
+
     mask = h5.File(f"{wdir}/{frame_ID}/ruralvelcrop_20221013.h5")["Average_Coh"][:] > 0.3
     # mask = coherence_mask(dates_between, f"{wdir}/{frame_ID}", ml, shape)
     # DO LANDCOVER
