@@ -1,6 +1,6 @@
 # Phase bias work while at SatSense
 
-To plot loop closure and plot Figure 2 form Yasser's paper:
+To plot loop closure and plot Figure 2 from Yasser's paper (need to check that hte func to generate ifgs with different temp baselines is the correct way around):
 
 	python loopClosure.py 
 	
@@ -37,5 +37,18 @@ To recreate Figure 4 from Yasser's paper:
 	m: Multilook factor: nr,na
 	p: Plot output: bool (Don't do if input is N>5)
 	s: Save output arrays: bool
+	
+This script can be used to generate the a1 and a2 values. It is worth checking this over to make sure there aren't any more mistakes...
+	
+	python generate_a_variables.py
+	Doesn't take cmd arguments so will have to change paths from within the script. Saves the a1 and a2 arrays as a stacked array (2, i, j) called a_variables.npy. 
+	
+	python a_comparison_timeseries.py
+	This script generates the loop closure time-series and corrected loop closure time series for aregion that can be specified in the script. 
+	
+	python a_comparison.py
+	This script generates the loop closure for a set of dates and plots them. 
+	
+	
 	
 	
