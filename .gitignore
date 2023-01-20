@@ -647,3 +647,10 @@ test.jpg
 12_6_6/data/20201228_20210109.npy
 *.npy
 .gitignore
+pypackages.py
+d_test.csv
+*.txt
+*.csv
+*.h5
+*.pyc
+*.json
