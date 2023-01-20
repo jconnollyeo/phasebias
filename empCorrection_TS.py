@@ -6,7 +6,8 @@ import h5py as h5
 import glob
 from datetime import datetime, timedelta
 import argparse
-from utils import multilook
+# from utils import multilook
+from generate_a_variables import multilook
 
 def main():
     """This is an implementation of the empirical correction developed by Y Maghsoudi et al. 2021. 
@@ -26,6 +27,9 @@ def main():
     save = int(args_dict["save"])
 
     a1, a2 = 0.47, 0.31
+    # a1, a2 = 1.05, 0.68
+    # a1, a2 = -1.10, -0.48
+
     # a1, a2 = np.load("a_variables.npy")
     
     # a1 = np.nanmean(a1)
@@ -66,7 +70,8 @@ def main():
     shape = multilook(h5.File(ifg_filenames[0])["Phase"][:], ml[0], ml[1]).shape
     
     # Create mask
-    av_coherence = h5.File(f"{wdir}/{frame_ID}/ruralvelcrop_20221013.h5")["Average_Coh"][:]
+    # av_coherence = h5.File(f"{wdir}/{frame_ID}/ruralvelcrop_20221013.h5")["Average_Coh"][:]
+    av_coherence = np.ones(shape)
     # mask = av_coherence > 0.3
     mask = av_coherence > -999
     # mask = np.ones(shape, dtype=bool) # Temporary
@@ -135,15 +140,15 @@ def main():
         for i in np.arange(mhat[0].shape[0]):
             # SAVE THE 6DAY CORRECTION
             if i not in missing_output_ix:
-                with h5.File(f"{wdir}/{frame_ID}/2021/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5", "w") as f:
+                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+1]}/{dates[i]}-{dates[i+1]}_corr.h5", "w") as f:
                     f.create_dataset("Correction", data=(mhat[0][i]).reshape(shape))
             # SAVE THE 12DAY CORRECTION
             if (i not in missing_output_ix) and (i+1 not in missing_output_ix) and (i+1 <= mhat[0].shape[0]-1):
-                with h5.File(f"{wdir}/{frame_ID}/2021/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5", "w") as f:
+                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+2]}/{dates[i]}-{dates[i+2]}_corr.h5", "w") as f:
                     f.create_dataset("Correction", data=((a1)*(mhat[0][i] + mhat[0][i+1])).reshape(shape))
             # SAVE THE 18DAY CORRECTION
             if (i not in missing_output_ix) and (i+1 not in missing_output_ix) and (i+2 not in missing_output_ix) and (i+2 <= mhat[0].shape[0]-1):
-                with h5.File(f"{wdir}/{frame_ID}/2021/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5", "w") as f:
+                with h5.File(f"{wdir}/{frame_ID}/Coherence/{dates[i+3]}/{dates[i]}-{dates[i+3]}_corr.h5", "w") as f:
                     f.create_dataset("Correction", data=((a2)*(mhat[0][i] + mhat[0][i+1] + mhat[0][i+2])).reshape(shape))
 
         print ("Output saved")
@@ -302,7 +307,9 @@ def makeLoop(filenames, shape, ml=[3, 12], mask=None):
         ifg1 = np.exp(1j*h5.File(ifgfn1, "r")["Phase"][:]) # Load in the first ifg
         ifg2 = np.exp(1j*h5.File(ifgfn2, "r")["Phase"][:]) # Load in the second ifg
 
-        ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create an ifg between them and multilook
+        # ifg12 = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]) # Create an ifg between them and multilook
+        ifg12 = multilook(np.conjugate(ifg1)*ifg2, ml[0], ml[1]) # Create an ifg between them and multilook
+
         
         short_ifgs[i] = ifg12 # Put it in the short_ifgs array
 
@@ -310,7 +317,7 @@ def makeLoop(filenames, shape, ml=[3, 12], mask=None):
 
     ifg1 = np.exp(1j*h5.File(filenames[0], "r")["Phase"][:]) # Load the first ifg of the ifg spanning the whole time
     ifg2 = np.exp(1j*h5.File(filenames[-1], "r")["Phase"][:]) # Load in the second ifg of the ifg spanning the whole time
-    long_ifg = multilook(ifg1*ifg2.conjugate(), ml[0], ml[1]).astype(np.complex64) # Create the ifg between them and multilook
+    long_ifg = multilook(np.conjugate(ifg1)*ifg2, ml[0], ml[1]).astype(np.complex64) # Create the ifg between them and multilook
     
     # Deal with mask
     if isinstance(mask, type(None)):
