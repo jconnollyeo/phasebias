@@ -1,11 +1,10 @@
 import numpy as np
 import h5py as h5
 import matplotlib.pyplot as plt
-# import os
 import glob
 from datetime import datetime, timedelta
 import sys
-from utils import multilook
+from generate_a_variables import multilook
 import argparse
 from pathlib import Path
 
@@ -22,6 +21,9 @@ def main():
     coherence_folder = wdir / frame_ID / "Coherence"
     coherence_folder = "/workspace/rapidsar_test_data/south_yorkshire/jacob2/2021/Coherence"
 
+    coherence_folder = "/home/jacob/Satsense/ss2/south_yorkshire/data_with_correction/2021/Coherence"
+    phase_folder = "/home/jacob/Satsense/ss2/south_yorkshire/data_with_correction/IFG/singlemaster"
+
     plt.rcParams['image.cmap'] = 'RdYlBu'
 
     startdate_dt = datetime.strptime(startdate, "%Y%m%d")
@@ -35,11 +37,14 @@ def main():
     for d in range(0, days_between, length):
         print (d)
         date = datetime.strftime(startdate_dt + timedelta(days=d), "%Y%m%d")
-        corrected.append(np.angle(np.mean(loopClosure(date, phase_folder, coherence_folder, ml, length, correct=True))))
-        uncorrected.append(np.angle(np.mean(loopClosure(date, phase_folder, coherence_folder, ml, length, correct=False))))
+        corrected_ = loopClosure(date, phase_folder, coherence_folder, ml, length, correct=True)
+        corrected.append(np.angle(np.mean(corrected_)))
+        uncorrected_ = loopClosure(date, phase_folder, coherence_folder, ml, length, correct=False)
+        uncorrected.append(np.angle(np.mean(uncorrected_)))
 
-    plt.plot(-1*np.cumsum(uncorrected), label="Uncorrected")
-    plt.plot(-1*np.cumsum(corrected), label="Corrected")
+    plt.figure()
+    plt.plot(np.cumsum(uncorrected), label="Uncorrected")
+    plt.plot(np.cumsum(corrected), label="Corrected")
     plt.legend()
     plt.show()
 
@@ -68,29 +73,44 @@ def loopClosure(date, phase_folder, coherence_folder, ml=[3, 12], length = 12, c
     for i, file in enumerate(phase_files):
         phase[i] = h5.File(file[0])["Phase"][:]
 
-    short_ifgs = np.exp(1j*(phase[:-1] - phase[1:]))
-    long_ifg = np.exp(1j*(phase[0] - phase[-1]))
+    short_ifgs = np.exp(1j*(phase[1:] - phase[:-1]))
+    # short_ifgs = np.conjugate(np.exp(1j*phase[:-1])) * np.exp(1j*phase[1:])
+
+    long_ifg = np.exp(1j*(phase[-1] - phase[0]))
+    # long_ifg = np.conjugate(np.exp(1j*(phase[0]))) * np.exp(1j*(phase[1]))
     
     short_ifgs_ml = np.array([multilook(short, ml[0], ml[1]) for short in short_ifgs])
     long_ifg_ml = multilook(long_ifg, ml[0], ml[1])
 
-    short_corr = short_ifgs_ml.copy()
+    short_corr = np.empty_like(short_ifgs_ml, dtype=float) # short_ifgs_ml.copy()
     
     # closure = long_ifg_ml * (np.product(short_ifgs_ml, axis=0).conjugate())
 
     closure = np.exp(1j* (np.angle(long_ifg_ml) - np.sum(np.angle(short_ifgs_ml), axis=0)) )
+    # closure = long_ifg_ml * np.conjugate(np.product(short_ifgs_ml, axis=0))
 
     if correct:
         short_correction_files = [Path(f"{coherence_folder}/{d_sec}/{d_pri}-{d_sec}_corr.h5") for d_pri, d_sec in zip(dates[:-1], dates[1:])]
         for i, fn in enumerate(short_correction_files):
-            if fn.exists():
-                short_corr[i] = np.exp(1j*h5.File(fn)["Correction"][:])
-        long_corr = np.exp(1j*h5.File(f"{coherence_folder}/{dates[-1]}/{dates[0]}-{dates[-1]}_corr.h5")["Correction"][:])
-        closure_corr = np.exp(1j* (np.angle(long_corr) - np.sum(np.angle(short_corr), axis=0)) )
 
-        return np.exp(1j* (np.angle(closure) - np.angle(closure_corr)) )
+            if fn.exists():
+                # short_corr[i] = np.exp(1j*h5.File(fn)["Correction"][:])
+                short_corr[i] = h5.File(fn)["Correction"][:]
+
+
+        # long_corr = np.exp(1j*h5.File(f"{coherence_folder}/{dates[-1]}/{dates[0]}-{dates[-1]}_corr.h5")["Correction"][:])
+        long_corr = h5.File(f"{coherence_folder}/{dates[-1]}/{dates[0]}-{dates[-1]}_corr.h5")["Correction"][:]
+
+        
+        # closure_corr = long_corr * np.conjugate(np.product(short_corr, axis=0))
+        closure_corr = np.exp(1j* (long_corr - np.sum(short_corr, axis=0)))
+
+        # closure_corr = np.exp(1j * (np.angle(long_corr) - np.sum(np.angle(short_corr), axis=0)) )
+        
+        # return np.exp(1j* (np.angle(closure) - np.angle(closure_corr)) )
+        return np.conjugate(closure * np.conjugate(closure_corr))
     else:
-        return closure
+        return np.conjugate(closure)
     
     # if correct:
     #     short_correction_files = [Path(f"{coherence_folder}/{d_sec}/{d_pri}-{d_sec}_corr.h5") for d_pri, d_sec in zip(dates[:-1], dates[1:])]
