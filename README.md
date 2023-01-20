@@ -28,6 +28,7 @@ To recreate Figure 4 from Yasser's paper:
 	Same arguments as the Fig3 script.
 
 ## Implementing the empirical correction:
+Need to check that the loops are calculated the correct way around (this would effect the output correction and then how the correction is applied in the phase unwrapping. 
 
 	python empCorrection_TS.py -d "20210101,20220101" -p 0 -s 1
 	
