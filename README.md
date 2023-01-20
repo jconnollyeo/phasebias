@@ -42,6 +42,8 @@ This script can be used to generate the a1 and a2 values. It is worth checking t
 	
 	python generate_a_variables.py
 	Doesn't take cmd arguments so will have to change paths from within the script. Saves the a1 and a2 arrays as a stacked array (2, i, j) called a_variables.npy. 
+
+Additional scripts used to create plots
 	
 	python a_comparison_timeseries.py
 	This script generates the loop closure time-series and corrected loop closure time series for aregion that can be specified in the script. 
