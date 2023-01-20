@@ -229,7 +229,7 @@ def parse_args():
                         type=int,
                         dest='loop_delta',
                         default=2,
-                        help='Delta for the jumpy (ie. 2 for a triplet.')
+                        help='Delta for the jump (ie. 2 for a triplet.')
     parser.add_argument("-m",
                         type=str,
                         dest='multilook',
