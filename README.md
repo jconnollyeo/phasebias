@@ -49,6 +49,7 @@ This script can be used to generate the a1 and a2 values. It is worth checking t
 	python a_comparison.py
 	This script generates the loop closure for a set of dates and plots them. 
 	
-	
+	python loopClosure_TS.py 
+	This scirpt also calculates the loop closure for a time series and plots it. 
 	
 	
