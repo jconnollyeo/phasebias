@@ -187,6 +187,18 @@ def doLoops(fns, start, length, delta, ml):
     return delta_ifgs_summed
 
 def multilook_mode(arr, ml, preserve_res=True):
+    """_summary_
+
+    Args:
+        arr (2d array): Array to multilook
+        ml (len=2 list): Multilook factor (fa, fr)
+        preserve_res (bool, optional): This forces the size of the output to be the same as the input - each 
+        multilooked cell will be of size (fa, fr). Defaults to True.
+
+    Returns:
+        2d array: multilooked array
+        perc (2d array): Percentage of the pixels that are the same as the mode pixel
+    """
 
     start_indices_i = np.arange(arr.shape[0])[::ml[0]]
     start_indices_j = np.arange(arr.shape[1])[::ml[1]]
