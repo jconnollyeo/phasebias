@@ -9,7 +9,6 @@ import sys
 # Plot: Loop, Loop correction, Corrected loop
 
 def make_ifg(date1, date2):
-    # print (date1, date2)
 
     date1_fn = glob.glob(f"/home/jacob/Satsense/ss2/south_yorkshire/data_with_correction/IFG/singlemaster/*_{date1}/*_{date1}_ph.h5")[0]
     date2_fn = glob.glob(f"/home/jacob/Satsense/ss2/south_yorkshire/data_with_correction/IFG/singlemaster/*_{date2}/*_{date2}_ph.h5")[0]
@@ -22,10 +21,8 @@ def make_ifg(date1, date2):
     return ifg
 
 def get_corr(date1, date2, a_folder):
-    # print (date1, date2)
-    corr_fn = glob.glob(f"/home/jacob/Satsense/ss2/south_yorkshire/data_with_correction/2021/{a_folder}/Coherence/{date2}/{date1}-{date2}_corr.h5")[0]
 
-    # print (date1, date2)
+    corr_fn = glob.glob(f"/home/jacob/Satsense/ss2/south_yorkshire/data_with_correction/2021/{a_folder}/Coherence/{date2}/{date1}-{date2}_corr.h5")[0]
 
     corr = h5.File(corr_fn)["Correction"][:]
 
@@ -34,17 +31,10 @@ def get_corr(date1, date2, a_folder):
 dates = [d.split("/")[-1] for d in glob.glob("/home/jacob/Satsense/ss2/south_yorkshire/data_with_correction/2021/a1*/Coherence/2021*")]
 dates.sort()
 
-# for i, date in enumerate(dates):
-#     print (i, date)
-
-# sys.exit()
-
 np.random.seed(2021)
 rand_ix = np.random.randint(3, len(dates)-4, 5)
 print (rand_ix)
 rand_ix = [14, 16, 18]
-
-# a1 = 0.47, a2 = 0.31
 
 # IFG
 # for a_folder in ["a-110_-048"]:#, , ]:
@@ -124,9 +114,3 @@ for a_folder in ["a105_068"]:
         ax_loop[1, 2].set_title(f"mean = {np.angle(np.nanmean(np.exp(1j*corr_ifg_loop))):.2f}", fontsize=10)
 
         plt.savefig(f"a_comparison/{a_folder}_{dates[i]}-{dates[i+2]}_loop.png", dpi=500)
-    
-# a1 = 1.05, a2 = 0.68
-
-
-
-# a1 = -1.10, a2 = -0.48
